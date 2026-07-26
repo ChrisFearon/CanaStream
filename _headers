@@ -1,0 +1,13 @@
+# Cloudflare Pages headers
+# Applied to every response. See https://developers.cloudflare.com/pages/configuration/headers/
+
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+# Cache the page briefly so updates roll out quickly
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate

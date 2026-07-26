@@ -33,6 +33,17 @@ CanaStream queries [The Movie Database (TMDB)](https://www.themoviedb.org/) with
 - Availability reflects "streamable in Canada," not "Canadian-produced" — TMDB does not expose a CanCon flag.
 - Data and images courtesy of TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.
 
+## Deploy (Cloudflare Pages)
+
+This repo is deploy-ready for Cloudflare Pages via GitHub integration:
+
+1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**.
+2. Pick the `CanaStream` repo.
+3. Build settings: **Framework preset = None**, **Build command = (leave empty)**, **Build output directory = `/`**.
+4. **Save and Deploy.** Every push to `main` redeploys automatically.
+
+`_headers` sets security/caching headers; `wrangler.toml` declares the static output dir.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
