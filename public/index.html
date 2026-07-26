@@ -83,6 +83,7 @@
   .card .meta { padding: 10px 12px 12px; }
   .card .title { font-size: 14px; font-weight: 600; line-height: 1.3; margin: 0 0 4px; }
   .card .sub { font-size: 12px; color: var(--muted); margin: 0 0 8px; }
+  .card .coming { font-size: 11px; font-weight: 700; color: #4ade80; margin: -2px 0 6px; }
   .provs { display: flex; gap: 8px; flex-wrap: wrap; }
   .prov { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 44px; }
   .prov img { width: 30px; height: 30px; border-radius: 6px; }
@@ -178,6 +179,14 @@ const IMG = "https://image.tmdb.org/t/p/w342";
 const LOGO = "https://image.tmdb.org/t/p/original";
 const BACKDROP = "https://image.tmdb.org/t/p/w780";
 const REGION = "CA";
+
+// Format a YYYY-MM-DD date as e.g. "Jul 30, 2026" for the Upcoming tab.
+function fmtDate(s) {
+  if (!s) return "";
+  const d = new Date(s + "T00:00:00");
+  if (isNaN(d.getTime())) return s;
+  return d.toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" });
+}
 
 // Choose the best YouTube trailer from a TMDB videos payload: prefer official
 // Trailers, then Teasers, then anything else on YouTube.
@@ -279,6 +288,7 @@ function Card({ item, onOpen }) {
         : <div className="poster noposter">No image</div>}
       <div className="meta">
         <div className="badge">{type}{year ? " · " + year : ""}</div>
+        {item._upcoming && <div className="coming">📅 {fmtDate(item._upcoming)}</div>}
         <p className="title">{title}</p>
         <div className="provs">
           {item._onPlex && (
@@ -549,6 +559,29 @@ function App() {
         items = (d.results || []).slice(0, 20).map(x => ({ ...x, media_type: "movie" }));
         const enriched = await enrich(items);
         if (live()) setResults(enriched);
+      } else if (mode === "upcoming") {
+        // Upcoming: theatrical movie releases in Canada + TV shows whose first
+        // air date is still in the future, merged and sorted by soonest. These
+        // usually have no streaming providers yet, so we don't filter by
+        // service — we just list them (badges still appear if TMDB has them).
+        const today = new Date().toISOString().slice(0, 10);
+        const [mr, tr] = await Promise.all([
+          tmdbGet(`/movie/upcoming`, { region: REGION, page: 1 }),
+          tmdbGet(`/discover/tv`, { watch_region: REGION, "first_air_date.gte": today, sort_by: "first_air_date.asc", page: 1 }),
+        ]);
+        const [md, td] = await Promise.all([mr.json(), tr.json()]);
+        if (md.status_code) throw new Error(md.status_message || "TMDB error");
+        const movies = (md.results || [])
+          .filter(x => x.release_date && x.release_date >= today)
+          .map(x => ({ ...x, media_type: "movie", _upcoming: x.release_date }));
+        const shows = (td.results || [])
+          .filter(x => x.first_air_date && x.first_air_date >= today)
+          .map(x => ({ ...x, media_type: "tv", _upcoming: x.first_air_date }));
+        items = [...movies, ...shows]
+          .sort((a, b) => a._upcoming.localeCompare(b._upcoming))
+          .slice(0, 20);
+        const enriched = await enrich(items);
+        if (live()) setResults(enriched);
       } else {
         // Trending: TMDB's most-searched / most-popular titles this week
         const r = await tmdbGet(`/trending/all/week`);
@@ -586,6 +619,7 @@ function App() {
         <button className={mode === "search" ? "active" : ""} onClick={() => setMode("search")}>Search a title</button>
         <button className={mode === "browse" ? "active" : ""} onClick={() => setMode("browse")}>Browse by service</button>
         <button className={mode === "trending" ? "active" : ""} onClick={() => setMode("trending")}>Trending now</button>
+        <button className={mode === "upcoming" ? "active" : ""} onClick={() => setMode("upcoming")}>Upcoming</button>
       </div>
 
       {mode === "search" && (
@@ -633,10 +667,18 @@ function App() {
         </div>
       )}
 
+      {mode === "upcoming" && (
+        <div style={{ marginBottom: 16 }}>
+          <button onClick={runSearch} disabled={loading}>Show upcoming releases</button>
+        </div>
+      )}
+
       {loading && <div className="status"><div className="spinner"></div>Searching Canadian availability…</div>}
       {error && <div className="status" style={{ color: "#ff6b6b" }}>{error}</div>}
       {!loading && !error && touched && results.length === 0 &&
-        <div className="status">No matches on the selected services in Canada.</div>}
+        <div className="status">{mode === "upcoming"
+          ? "No upcoming titles found right now."
+          : "No matches on the selected services in Canada."}</div>}
 
       <div className="grid">
         {results.map(item => <Card key={(item.media_type || "m") + item.id} item={item} onOpen={openDetail} />)}
