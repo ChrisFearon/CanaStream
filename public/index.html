@@ -54,7 +54,8 @@
   .keybar label { font-size: 13px; color: var(--muted); }
   input[type="text"], input[type="password"] {
     background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
-    border-radius: 8px; padding: 10px 12px; font-size: 14px; outline: none;
+    /* 16px keeps iOS Safari from auto-zooming the page when the field is tapped. */
+    border-radius: 8px; padding: 10px 12px; font-size: 16px; outline: none;
   }
   input:focus { border-color: var(--accent); }
   .searchrow { display: flex; gap: 10px; margin-bottom: 14px; }
@@ -65,7 +66,7 @@
   }
   button.ghost { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); font-weight: 500; }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
-  .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
   .tabs button { background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); font-weight: 500; }
   .tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
   .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
@@ -115,9 +116,10 @@
   .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.62); z-index: 40; opacity: 0; animation: fade 0.2s ease forwards; }
   @keyframes fade { to { opacity: 1; } }
   .drawer {
-    position: fixed; top: 0; right: 0; height: 100%; width: min(520px, 100%);
+    position: fixed; top: 0; right: 0; height: 100%; height: 100dvh; width: min(520px, 100%);
     background: var(--panel); border-left: 1px solid var(--border); z-index: 50;
-    overflow-y: auto; box-shadow: -20px 0 60px rgba(0,0,0,0.5);
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    box-shadow: -20px 0 60px rgba(0,0,0,0.5);
     transform: translateX(100%); animation: slidein 0.25s ease forwards;
   }
   @keyframes slidein { to { transform: translateX(0); } }
@@ -142,12 +144,34 @@
   .cast { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 0 0 18px; }
   .tmdblink { display: inline-block; font-size: 13px; color: var(--accent); text-decoration: none; }
   .dloading { padding: 40px 0; text-align: center; color: var(--muted); }
+
+  /* Tablet / iPad: a touch less side padding, slightly narrower cards. */
+  @media (max-width: 820px) {
+    .wrap { padding: 28px 16px 48px; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+  }
+
+  /* Phone / iPhone: comfortable two-up grid, full-width controls, bigger taps. */
+  @media (max-width: 560px) {
+    .wrap { padding: 20px 12px 44px; }
+    header h1 { font-size: 27px; }
+    .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    /* Tabs and segmented cost control each split the row evenly. */
+    .tabs button { flex: 1 1 auto; }
+    .seg { display: flex; width: 100%; }
+    .seg button { flex: 1; padding: 10px 8px; }
+    /* Larger touch targets on chips and the drawer close button. */
+    .chip { padding: 9px 15px; font-size: 14px; }
+    .drawer .close { width: 40px; height: 40px; font-size: 20px; }
+    .dbody { padding: 16px 16px 40px; }
+    .dbody h2 { font-size: 20px; }
+  }
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useEffect, useCallback } = React;
+const { useState, useEffect, useCallback, useRef } = React;
 
 const API = "https://api.themoviedb.org/3";
 const IMG = "https://image.tmdb.org/t/p/w342";
@@ -378,6 +402,11 @@ function App() {
   const [detail, setDetail] = useState(null);       // the item shown in the drawer
   const [detailData, setDetailData] = useState(null); // fetched TMDB details
   const [detailLoading, setDetailLoading] = useState(false);
+  // Monotonic id for the in-flight search. Each runSearch captures the id at
+  // start; only the latest is allowed to write results. This prevents a slow
+  // earlier query (e.g. "the be…") from clobbering a newer one ("the bear")
+  // when its enrich() fetches resolve out of order.
+  const reqRef = useRef(0);
 
   // Detect the Cloudflare Worker proxy that holds the key server-side.
   // If present (200), we never ask for a key. If not (503/404/offline file://),
@@ -489,6 +518,10 @@ function App() {
 
   const runSearch = useCallback(async () => {
     if (!useProxy && !apiKey) { setError("Enter your TMDB API key first."); return; }
+    // Claim the latest request id. Any state write below is gated on this
+    // still being current, so out-of-order responses are dropped.
+    const myId = ++reqRef.current;
+    const live = () => reqRef.current === myId;
     setTouched(true); setError(""); setLoading(true); setResults([]);
     // A title passes when it's on a selected streaming service, or — with the
     // Plex chip on — it's in your Plex library.
@@ -497,25 +530,25 @@ function App() {
     try {
       let items = [];
       if (mode === "search") {
-        if (!query.trim()) { setLoading(false); return; }
+        if (!query.trim()) { if (live()) setLoading(false); return; }
         const r = await tmdbGet(`/search/multi`, { query, region: REGION, include_adult: false });
         const d = await r.json();
         if (d.status_code) throw new Error(d.status_message || "TMDB error");
         items = (d.results || []).filter(x => x.media_type === "movie" || x.media_type === "tv").slice(0, 20);
         const enriched = await enrich(items);
-        setResults(enriched.filter(passes));
+        if (live()) setResults(enriched.filter(passes));
       } else if (mode === "browse") {
         // Browse: what's currently available on the selected services in Canada.
         // Discover is TMDB-only, so the Plex sentinel is excluded here.
         const tmdbIds = [...selected].filter(id => typeof id === "number");
-        if (!tmdbIds.length) { setError("Select at least one streaming service to browse."); setLoading(false); return; }
+        if (!tmdbIds.length) { if (live()) { setError("Select at least one streaming service to browse."); setLoading(false); } return; }
         const provParam = tmdbIds.join("|");
         const r = await tmdbGet(`/discover/movie`, { watch_region: REGION, with_watch_providers: provParam, with_watch_monetization_types: monetizationParam(costFilter), sort_by: "popularity.desc", page: 1 });
         const d = await r.json();
         if (d.status_code) throw new Error(d.status_message || "TMDB error");
         items = (d.results || []).slice(0, 20).map(x => ({ ...x, media_type: "movie" }));
         const enriched = await enrich(items);
-        setResults(enriched);
+        if (live()) setResults(enriched);
       } else {
         // Trending: TMDB's most-searched / most-popular titles this week
         const r = await tmdbGet(`/trending/all/week`);
@@ -523,19 +556,21 @@ function App() {
         if (d.status_code) throw new Error(d.status_message || "TMDB error");
         items = (d.results || []).filter(x => x.media_type === "movie" || x.media_type === "tv").slice(0, 20);
         const enriched = await enrich(items);
-        setResults(enriched.filter(passes));
+        if (live()) setResults(enriched.filter(passes));
       }
     } catch (e) {
-      setError(e.message || "Something went wrong.");
+      if (live()) setError(e.message || "Something went wrong.");
     } finally {
-      setLoading(false);
+      if (live()) setLoading(false);
     }
   }, [apiKey, useProxy, mode, query, selected, costFilter, enrich, tmdbGet]);
 
   // Live partial search: run automatically (debounced) as the user types.
   useEffect(() => {
     if (mode !== "search") return;
-    if (query.trim().length < 2) { setResults([]); setTouched(false); return; }
+    // Bumping reqRef invalidates any search still in flight so it can't write
+    // stale results after the box is cleared.
+    if (query.trim().length < 2) { reqRef.current++; setResults([]); setTouched(false); return; }
     const t = setTimeout(() => { runSearch(); }, 450);
     return () => clearTimeout(t);
   }, [query, mode, selected, costFilter, runSearch]);
