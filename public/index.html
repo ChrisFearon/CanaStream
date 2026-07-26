@@ -349,6 +349,12 @@ function extractPlexItems(d) {
 
 const normTitle = (t) => (t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
+// Punctuation/space-insensitive form for search-relevance matching, so a query
+// keeps hits whose *visible* title contains it ("spiderman" → "Spider-Man",
+// "schit" → "Schitt's Creek") while dropping cross-language matches where only
+// a hidden original title matched (e.g. "dune" ← "Anatomie d'une chute").
+const squash = (t) => (t || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
 // Does a title exist in the Plex library? Matches on normalized title + year
 // (±1) and media type. Returns false on any error so Plex never breaks search.
 async function isOnPlex(title, year, mediaType) {
@@ -821,7 +827,13 @@ function App() {
         const r = await tmdbGet(`/search/multi`, { query, region: country, include_adult: false });
         const d = await r.json();
         if (d.status_code) throw new Error(d.status_message || "TMDB error");
-        items = (d.results || []).filter(x => x.media_type === "movie" || x.media_type === "tv").slice(0, 20);
+        // Keep only titles whose visible name actually contains the query, so
+        // TMDB's hidden alternate/original-title matches don't leak in.
+        const sq = squash(query);
+        items = (d.results || [])
+          .filter(x => x.media_type === "movie" || x.media_type === "tv")
+          .filter(x => !sq || squash(x.title || x.name).includes(sq))
+          .slice(0, 20);
         const enriched = await enrich(items);
         if (live()) setResults(enriched.filter(passes));
       } else if (mode === "browse") {
