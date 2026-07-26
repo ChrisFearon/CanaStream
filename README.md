@@ -37,14 +37,34 @@ CanaStream queries [The Movie Database (TMDB)](https://www.themoviedb.org/) with
 
 ## Deploy (Cloudflare Pages)
 
-This repo is deploy-ready for Cloudflare Pages via GitHub integration:
+Deployed as a **Cloudflare Worker with static assets** via GitHub integration.
+`worker.js` serves the site from `public/` and exposes a secure TMDB proxy at
+`/api/tmdb`; `wrangler.toml` wires them together.
 
-1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**.
-2. Pick the `CanaStream` repo.
-3. Build settings: **Framework preset = None**, **Build command = (leave empty)**, **Build output directory = `/`**.
-4. **Save and Deploy.** Every push to `main` redeploys automatically.
+- `public/` — static site (`index.html`, `_headers`)
+- `worker.js` — Worker entry (static assets + `/api/tmdb` proxy)
+- `wrangler.toml` — `main = worker.js`, assets `directory = ./public`
 
-`_headers` sets security/caching headers; `wrangler.toml` declares the static output dir.
+Every push to `main` triggers a Workers build (`wrangler deploy`) automatically.
+
+### Storing the TMDB key as a Worker secret
+
+The proxy reads the key from `env.TMDB_API_KEY`, so it is never exposed in the
+browser and you never have to type it.
+
+**Dashboard:** open the **canastream** Worker → **Settings** → **Variables and
+secrets** → **Add** → Type **Secret**, name `TMDB_API_KEY`, paste your v3 key →
+**Save**, then redeploy.
+
+**Or via CLI:**
+
+```bash
+npx wrangler secret put TMDB_API_KEY
+```
+
+When the secret is present, the page auto-detects the proxy and hides the key
+field. Opening `public/index.html` locally (no Worker) still falls back to
+manual entry.
 
 ## License
 

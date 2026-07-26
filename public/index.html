@@ -129,7 +129,7 @@ function Card({ item }) {
 
 function App() {
   const [apiKey, setApiKey] = useApiKey();
-  const [mode, setMode] = useState("search"); // "search" | "browse"
+  const [mode, setMode] = useState("search"); // "search" | "browse" | "trending"
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(new Set([8, 337, 9, 230, 350]));
   const [results, setResults] = useState([]);
@@ -138,7 +138,7 @@ function App() {
   const [touched, setTouched] = useState(false);
   const [useProxy, setUseProxy] = useState(false);
 
-  // Detect a Cloudflare Pages Function proxy that holds the key server-side.
+  // Detect the Cloudflare Worker proxy that holds the key server-side.
   // If present (200), we never ask for a key. If not (503/404/offline file://),
   // we fall back to manual entry.
   useEffect(() => {
@@ -233,7 +233,7 @@ function App() {
     <div className="wrap">
       <header>
         <h1><span className="leaf">🍁</span> CanaStream</h1>
-        <p>Search titles streaming in Canada across Netflix, Disney+, Prime Video, and Crave.</p>
+        <p>Search titles streaming in Canada across Netflix, Disney+, Prime Video, Crave, and Apple TV+.</p>
       </header>
 
       {useProxy ? (
@@ -297,7 +297,7 @@ function App() {
       </div>
 
       {!touched && !loading &&
-        <div className="status">Enter your API key, pick your services, and search.</div>}
+        <div className="status">Pick your services and search.</div>}
     </div>
   );
 }

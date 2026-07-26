@@ -1,3 +1,9 @@
 name = "canastream"
+main = "worker.js"
 compatibility_date = "2026-07-26"
-pages_build_output_dir = "."
+
+# Serve the static site from ./public and bind it so the Worker can fall back
+# to static assets for any non-API route.
+[assets]
+directory = "./public"
+binding = "ASSETS"
