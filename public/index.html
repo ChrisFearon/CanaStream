@@ -108,6 +108,40 @@
   .badge { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 6px; }
   .spinner { border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; width: 26px; height: 26px; animation: spin 0.8s linear infinite; margin: 0 auto 10px; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  /* Card is clickable -> opens the detail drawer */
+  .card { cursor: pointer; transition: transform 0.12s ease, border-color 0.12s ease; }
+  .card:hover { transform: translateY(-2px); border-color: var(--accent); }
+  /* Slide-out detail drawer */
+  .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.62); z-index: 40; opacity: 0; animation: fade 0.2s ease forwards; }
+  @keyframes fade { to { opacity: 1; } }
+  .drawer {
+    position: fixed; top: 0; right: 0; height: 100%; width: min(520px, 100%);
+    background: var(--panel); border-left: 1px solid var(--border); z-index: 50;
+    overflow-y: auto; box-shadow: -20px 0 60px rgba(0,0,0,0.5);
+    transform: translateX(100%); animation: slidein 0.25s ease forwards;
+  }
+  @keyframes slidein { to { transform: translateX(0); } }
+  .drawer .dhead { position: relative; background: var(--panel-2); }
+  .drawer .backdropimg { display: block; width: 100%; aspect-ratio: 16/9; object-fit: cover; }
+  .drawer .close {
+    position: absolute; top: 12px; right: 12px; width: 34px; height: 34px;
+    border-radius: 50%; background: rgba(0,0,0,0.6); color: #fff; border: none;
+    font-size: 18px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .dbody { padding: 18px 20px 44px; }
+  .dbody h2 { margin: 0 0 6px; font-size: 22px; letter-spacing: -0.3px; }
+  .dmeta { color: var(--muted); font-size: 13px; margin: 0 0 14px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .dmeta .rating { color: #fbbf24; font-weight: 700; }
+  .genrow { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+  .genre { font-size: 11px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; color: var(--muted); }
+  .overview { font-size: 14px; line-height: 1.55; margin: 0 0 18px; }
+  .tagline { font-style: italic; color: var(--muted); margin: 0 0 12px; font-size: 14px; }
+  .trailer { position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 10px; overflow: hidden; margin-bottom: 18px; background: #000; }
+  .trailer iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .sect { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin: 0 0 8px; }
+  .cast { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 0 0 18px; }
+  .tmdblink { display: inline-block; font-size: 13px; color: var(--accent); text-decoration: none; }
+  .dloading { padding: 40px 0; text-align: center; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -118,7 +152,18 @@ const { useState, useEffect, useCallback } = React;
 const API = "https://api.themoviedb.org/3";
 const IMG = "https://image.tmdb.org/t/p/w342";
 const LOGO = "https://image.tmdb.org/t/p/original";
+const BACKDROP = "https://image.tmdb.org/t/p/w780";
 const REGION = "CA";
+
+// Choose the best YouTube trailer from a TMDB videos payload: prefer official
+// Trailers, then Teasers, then anything else on YouTube.
+function pickTrailer(videos) {
+  const vids = (videos && videos.results) || [];
+  const yt = vids.filter(v => v.site === "YouTube" && v.key);
+  const score = (v) => (v.type === "Trailer" ? 2 : v.type === "Teaser" ? 1 : 0) + (v.official ? 0.5 : 0);
+  yt.sort((a, b) => score(b) - score(a));
+  return yt[0] || null;
+}
 
 // TMDB offer categories → friendly labels shown on each result.
 const CAT_LABEL = { flatrate: "Included", free: "Free", ads: "Free · ads", rent: "Rent", buy: "Buy" };
@@ -195,14 +240,15 @@ function useApiKey() {
   return [key, setKey];
 }
 
-function Card({ item }) {
+function Card({ item, onOpen }) {
   const title = item.title || item.name;
   const date = item.release_date || item.first_air_date || "";
   const year = date ? date.slice(0, 4) : "";
   const type = item.media_type === "tv" || item.name ? "TV" : "Movie";
   const provs = item._providers || [];
   return (
-    <div className="card">
+    <div className="card" onClick={() => onOpen(item)}
+         title={"View details for " + title}>
       {item.poster_path
         ? <img className="poster" src={IMG + item.poster_path} alt={title} />
         : <div className="poster noposter">No image</div>}
@@ -229,6 +275,93 @@ function Card({ item }) {
   );
 }
 
+function Detail({ item, data, loading, onClose }) {
+  const title = item.title || item.name;
+  const date = item.release_date || item.first_air_date || "";
+  const year = date ? date.slice(0, 4) : "";
+  const type = item.media_type === "tv" ? "TV" : "Movie";
+  const provs = item._providers || [];
+
+  const trailer = data ? pickTrailer(data.videos) : null;
+  const genres = (data && data.genres) || [];
+  const overview = (data && data.overview) || item.overview || "";
+  const rating = (data && data.vote_average) || item.vote_average || 0;
+  const runtime = data && data.runtime ? data.runtime + " min" : "";
+  const seasons = data && data.number_of_seasons ? data.number_of_seasons + " season" + (data.number_of_seasons > 1 ? "s" : "") : "";
+  const cast = (data && data.credits && data.credits.cast || []).slice(0, 6).map(c => c.name);
+  const backImg = (data && data.backdrop_path) || item.backdrop_path;
+  const tmdbUrl = `https://www.themoviedb.org/${item.media_type === "tv" ? "tv" : "movie"}/${item.id}`;
+
+  return (
+    <div>
+      <div className="backdrop" onClick={onClose}></div>
+      <div className="drawer" role="dialog" aria-label={title}>
+        <div className="dhead">
+          {(backImg || item.poster_path) &&
+            <img className="backdropimg" alt="" src={BACKDROP + (backImg || item.poster_path)} />}
+          <button className="close" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+        <div className="dbody">
+          <h2>{title}</h2>
+          <div className="dmeta">
+            <span>{type}</span>
+            {year && <span>· {year}</span>}
+            {(runtime || seasons) && <span>· {runtime || seasons}</span>}
+            {rating > 0 && <span className="rating">★ {rating.toFixed(1)}</span>}
+          </div>
+
+          {loading && <div className="dloading"><div className="spinner"></div>Loading details…</div>}
+
+          {!loading && data && data.tagline && <p className="tagline">"{data.tagline}"</p>}
+
+          {!loading && trailer && (
+            <div className="trailer">
+              <iframe src={`https://www.youtube.com/embed/${trailer.key}`}
+                      title="Trailer" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen></iframe>
+            </div>
+          )}
+
+          {genres.length > 0 && (
+            <div className="genrow">{genres.map(g => <span key={g.id} className="genre">{g.name}</span>)}</div>
+          )}
+
+          {overview && <p className="overview">{overview}</p>}
+
+          {(provs.length > 0 || item._onPlex) && (
+            <div style={{ marginBottom: 18 }}>
+              <p className="sect">Where to watch (Canada)</p>
+              <div className="provs">
+                {item._onPlex && (
+                  <div className="prov plex" title="In your Plex library"><span className="pill">▶ Plex</span></div>
+                )}
+                {provs.map(p => (
+                  <div key={p.provider_id} className="prov" title={p.provider_name + " · " + p.offer}>
+                    <img src={LOGO + p.logo_path} alt={p.provider_name} />
+                    <span className={"offer " + (p.paid ? "paid" : "incl")}>{p.offer}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {cast.length > 0 && (
+            <div>
+              <p className="sect">Cast</p>
+              <p className="cast">{cast.join(", ")}</p>
+            </div>
+          )}
+
+          {!loading && !trailer && data &&
+            <p className="cast" style={{ marginBottom: 14 }}>No trailer available.</p>}
+
+          <a className="tmdblink" href={tmdbUrl} target="_blank" rel="noopener">View on TMDB ↗</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [apiKey, setApiKey] = useApiKey();
   const [mode, setMode] = useState("search"); // "search" | "browse" | "trending"
@@ -241,6 +374,9 @@ function App() {
   const [useProxy, setUseProxy] = useState(false);
   const [plexEnabled, setPlexEnabled] = useState(false);
   const [costFilter, setCostFilter] = useState("both"); // "free" | "paid" | "both"
+  const [detail, setDetail] = useState(null);       // the item shown in the drawer
+  const [detailData, setDetailData] = useState(null); // fetched TMDB details
+  const [detailLoading, setDetailLoading] = useState(false);
 
   // Detect the Cloudflare Worker proxy that holds the key server-side.
   // If present (200), we never ask for a key. If not (503/404/offline file://),
@@ -274,6 +410,34 @@ function App() {
     next.has(id) ? next.delete(id) : next.add(id);
     setSelected(next);
   };
+
+  // Open the detail drawer for an item and fetch full details + trailers.
+  const openDetail = useCallback(async (item) => {
+    setDetail(item); setDetailData(null); setDetailLoading(true);
+    const media = item.media_type === "tv" ? "tv" : "movie";
+    try {
+      const r = await tmdbGet(`/${media}/${item.id}`, { append_to_response: "videos,credits" });
+      const d = await r.json();
+      if (d.status_code) throw new Error(d.status_message || "TMDB error");
+      setDetailData(d);
+    } catch (e) {
+      setDetailData(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [tmdbGet]);
+
+  const closeDetail = useCallback(() => {
+    setDetail(null); setDetailData(null); setDetailLoading(false);
+  }, []);
+
+  // Close the drawer on Escape while it's open.
+  useEffect(() => {
+    if (!detail) return;
+    const onKey = (e) => { if (e.key === "Escape") closeDetail(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [detail, closeDetail]);
 
   // Attach CA providers to each title across the allowed cost categories,
   // labelling each provider (Included / Free / Rent / Buy) and filtering by
@@ -439,11 +603,13 @@ function App() {
         <div className="status">No matches on the selected services in Canada.</div>}
 
       <div className="grid">
-        {results.map(item => <Card key={(item.media_type || "m") + item.id} item={item} />)}
+        {results.map(item => <Card key={(item.media_type || "m") + item.id} item={item} onOpen={openDetail} />)}
       </div>
 
       {!touched && !loading &&
         <div className="status">Pick your services and search.</div>}
+
+      {detail && <Detail item={detail} data={detailData} loading={detailLoading} onClose={closeDetail} />}
     </div>
   );
 }
