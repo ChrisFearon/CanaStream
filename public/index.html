@@ -191,6 +191,7 @@ const SERVICES = [
   { id: 9,   name: "Prime Video" },
   { id: 230, name: "Crave" },
   { id: 350, name: "Apple TV+" },
+  { id: 192, name: "YouTube" },
 ];
 
 // Sentinel "service" id for a personal Plex library. Never sent to TMDB;
@@ -366,7 +367,7 @@ function App() {
   const [apiKey, setApiKey] = useApiKey();
   const [mode, setMode] = useState("search"); // "search" | "browse" | "trending"
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState(new Set([8, 337, 9, 230, 350, PLEX_ID]));
+  const [selected, setSelected] = useState(new Set([8, 337, 9, 230, 350, 192, PLEX_ID]));
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -543,7 +544,7 @@ function App() {
     <div className="wrap">
       <header>
         <h1><span className="leaf">🍁</span> CanaStream</h1>
-        <p>Search titles streaming in Canada across Netflix, Disney+, Prime Video, Crave, Apple TV+ — and your own Plex library.</p>
+        <p>Search titles streaming in Canada across Netflix, Disney+, Prime Video, Crave, Apple TV+, YouTube — and your own Plex library.</p>
       </header>
 
       <div className="tabs">
