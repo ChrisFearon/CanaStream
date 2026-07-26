@@ -11,6 +11,7 @@ CanaStream queries [The Movie Database (TMDB)](https://www.themoviedb.org/) with
 - **Trending now** — TMDB's most-searched/most-popular titles this week, filtered to what's streamable in Canada on your selected services.
 - **Upcoming** — upcoming theatrical movie releases in Canada plus TV shows with a future first-air date, merged and sorted by soonest, each showing its release date.
 - **Cost filter** — show titles that are included with a subscription (free/included), available to rent or buy (paid), or both. Each provider is labelled Included / Free / Rent / Buy.
+- **Genre & score filters** — narrow the current results by genre and by minimum score (TMDB `vote_average`, 0–10). Both apply instantly to whatever is on screen, in any tab. (TMDB's API exposes its own rating, not IMDb's.)
 - **Live provider data** — provider logos come straight from TMDB's Canadian availability data.
 - **Your Plex library** — when a Plex server is configured, any result you already own shows an **▶ Plex** badge, and a **My Plex** filter chip lets you narrow results to titles in your library.
 - **No build step** — one HTML file, opens in any modern browser.

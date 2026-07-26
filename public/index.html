@@ -4,6 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>CanaStream — Find what's streaming in Canada</title>
+<!-- Maple-leaf favicon (inline SVG emoji — no separate asset to serve). -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Ctext%20y='.9em'%20font-size='90'%3E%F0%9F%8D%81%3C/text%3E%3C/svg%3E" />
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
@@ -58,6 +60,11 @@
     border-radius: 8px; padding: 10px 12px; font-size: 16px; outline: none;
   }
   input:focus { border-color: var(--accent); }
+  select.sel {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 8px 10px; font-size: 16px; outline: none; cursor: pointer;
+  }
+  select.sel:focus { border-color: var(--accent); }
   .searchrow { display: flex; gap: 10px; margin-bottom: 14px; }
   .searchrow input { flex: 1; }
   button {
@@ -409,6 +416,9 @@ function App() {
   const [useProxy, setUseProxy] = useState(false);
   const [plexEnabled, setPlexEnabled] = useState(false);
   const [costFilter, setCostFilter] = useState("both"); // "free" | "paid" | "both"
+  const [genre, setGenre] = useState("");     // TMDB genre id as string ("" = all)
+  const [minScore, setMinScore] = useState(0); // minimum TMDB vote_average (0 = any)
+  const [genres, setGenres] = useState([]);    // {id, name} list for the dropdown
   const [detail, setDetail] = useState(null);       // the item shown in the drawer
   const [detailData, setDetailData] = useState(null); // fetched TMDB details
   const [detailLoading, setDetailLoading] = useState(false);
@@ -444,6 +454,24 @@ function App() {
     qs.set("api_key", apiKey);
     return fetch(`${API}${path}?${qs.toString()}`);
   }, [useProxy, apiKey]);
+
+  // Load TMDB's movie + TV genre names once (merged, de-duped) for the filter
+  // dropdown. Re-runs if tmdbGet changes (e.g. once the proxy is detected).
+  useEffect(() => {
+    let alive = true;
+    Promise.all([
+      tmdbGet(`/genre/movie/list`).then(r => r.json()).catch(() => ({})),
+      tmdbGet(`/genre/tv/list`).then(r => r.json()).catch(() => ({})),
+    ]).then(([m, t]) => {
+      if (!alive) return;
+      const map = new Map();
+      [...((m && m.genres) || []), ...((t && t.genres) || [])].forEach(g => map.set(g.id, g.name));
+      const list = [...map.entries()].map(([id, name]) => ({ id, name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      if (list.length) setGenres(list);
+    });
+    return () => { alive = false; };
+  }, [tmdbGet]);
 
   const toggle = (id) => {
     const next = new Set(selected);
@@ -608,6 +636,14 @@ function App() {
     return () => clearTimeout(t);
   }, [query, mode, selected, costFilter, runSearch]);
 
+  // Genre + min-score are applied here, at render time, so changing either
+  // instantly refines the current results without a new fetch.
+  const gid = genre ? Number(genre) : 0;
+  const visible = results.filter(x =>
+    (!gid || (x.genre_ids || []).includes(gid)) &&
+    ((x.vote_average || 0) >= minScore)
+  );
+
   return (
     <div className="wrap">
       <header>
@@ -638,6 +674,22 @@ function App() {
           <button className={costFilter === "paid" ? "active" : ""} onClick={() => setCostFilter("paid")}>Rent / buy</button>
           <button className={costFilter === "both" ? "active" : ""} onClick={() => setCostFilter("both")}>Both</button>
         </div>
+      </div>
+
+      <div className="costbar">
+        <span className="lbl">Genre</span>
+        <select className="sel" value={genre} onChange={e => setGenre(e.target.value)}>
+          <option value="">All genres</option>
+          {genres.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </select>
+        <span className="lbl">Min score</span>
+        <select className="sel" value={minScore} onChange={e => setMinScore(Number(e.target.value))}>
+          <option value="0">Any</option>
+          <option value="5">5+</option>
+          <option value="6">6+</option>
+          <option value="7">7+</option>
+          <option value="8">8+</option>
+        </select>
       </div>
 
       <div className="chips">
@@ -675,13 +727,16 @@ function App() {
 
       {loading && <div className="status"><div className="spinner"></div>Searching Canadian availability…</div>}
       {error && <div className="status" style={{ color: "#ff6b6b" }}>{error}</div>}
-      {!loading && !error && touched && results.length === 0 &&
-        <div className="status">{mode === "upcoming"
-          ? "No upcoming titles found right now."
-          : "No matches on the selected services in Canada."}</div>}
+      {!loading && !error && touched && visible.length === 0 && (
+        <div className="status">{results.length > 0
+          ? "No titles match the current genre / score filters."
+          : (mode === "upcoming"
+            ? "No upcoming titles found right now."
+            : "No matches on the selected services in Canada.")}</div>
+      )}
 
       <div className="grid">
-        {results.map(item => <Card key={(item.media_type || "m") + item.id} item={item} onOpen={openDetail} />)}
+        {visible.map(item => <Card key={(item.media_type || "m") + item.id} item={item} onOpen={openDetail} />)}
       </div>
 
       {!touched && !loading &&

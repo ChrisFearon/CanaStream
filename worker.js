@@ -12,6 +12,7 @@ const ALLOWED_PREFIXES = [
   "/trending/",
   "/movie/",
   "/tv/",
+  "/genre/",
   "/configuration",
 ];
 
