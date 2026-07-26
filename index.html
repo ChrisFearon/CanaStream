@@ -92,6 +92,7 @@ const SERVICES = [
   { id: 337, name: "Disney+" },
   { id: 9,   name: "Prime Video" },
   { id: 230, name: "Crave" },
+  { id: 350, name: "Apple TV+" },
 ];
 
 function useApiKey() {
@@ -130,7 +131,7 @@ function App() {
   const [apiKey, setApiKey] = useApiKey();
   const [mode, setMode] = useState("search"); // "search" | "browse"
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState(new Set([8, 337, 9, 230]));
+  const [selected, setSelected] = useState(new Set([8, 337, 9, 230, 350]));
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");

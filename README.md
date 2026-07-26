@@ -27,6 +27,7 @@ CanaStream queries [The Movie Database (TMDB)](https://www.themoviedb.org/) with
 | Disney+       | 337     |
 | Prime Video   | 9       |
 | Crave         | 230     |
+| Apple TV+     | 350     |
 
 ## Notes
 
