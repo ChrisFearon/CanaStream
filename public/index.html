@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>CanaStream — Find what's streaming in Canada</title>
+<title>CanaStream — Find where movies & shows are streaming</title>
 <!-- Maple-leaf favicon (inline SVG emoji — no separate asset to serve). -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Ctext%20y='.9em'%20font-size='90'%3E%F0%9F%8D%81%3C/text%3E%3C/svg%3E" />
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -161,6 +161,16 @@
   .trailer iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
   .sect { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin: 0 0 8px; }
   .cast { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 0 0 18px; }
+  /* Global "available in" list — every country the title streams in. */
+  .avail {
+    display: flex; flex-direction: column; gap: 2px;
+    max-height: 260px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--border); border-radius: 10px; padding: 6px; background: var(--panel-2);
+  }
+  .arow { display: flex; justify-content: space-between; gap: 12px; padding: 6px 8px; border-radius: 6px; font-size: 13px; }
+  .arow.here { background: rgba(229,9,20,0.14); }
+  .arow .acc { color: var(--text); white-space: nowrap; }
+  .arow .aprov { color: var(--muted); text-align: right; }
   .tmdblink { display: inline-block; font-size: 13px; color: var(--accent); text-decoration: none; }
   .dloading { padding: 40px 0; text-align: center; color: var(--muted); }
 
@@ -196,7 +206,50 @@ const API = "https://api.themoviedb.org/3";
 const IMG = "https://image.tmdb.org/t/p/w342";
 const LOGO = "https://image.tmdb.org/t/p/original";
 const BACKDROP = "https://image.tmdb.org/t/p/w780";
-const REGION = "CA";
+const REGION = "CA"; // default country until the user picks another
+
+// Countries offered in the picker (major streaming markets). Names and flag
+// emoji are derived from the ISO code, so this is just a curated ordering.
+const COUNTRIES = ["CA", "US", "GB", "IE", "AU", "NZ", "IN", "DE", "FR", "ES", "IT", "NL", "SE", "NO", "BR", "MX", "JP", "KR"];
+
+let REGION_NAMES = null;
+try { REGION_NAMES = new Intl.DisplayNames(["en"], { type: "region" }); } catch (e) { /* older browser */ }
+
+// ISO 3166-1 alpha-2 -> English country name (falls back to the raw code).
+function countryName(cc) {
+  if (!cc) return "";
+  try { return (REGION_NAMES && REGION_NAMES.of(cc)) || cc; } catch (e) { return cc; }
+}
+// Turn a 2-letter ISO code into its flag emoji via regional-indicator symbols.
+function flag(cc) {
+  if (!cc || cc.length !== 2) return "";
+  return cc.toUpperCase().replace(/./g, c => String.fromCodePoint(127397 + c.charCodeAt(0)));
+}
+
+// Collapse a TMDB watch/providers `results` map into a sorted per-country list
+// for the drawer: each row is a country + its included-streaming provider names
+// (flatrate/free/ads), or a "rent/buy only" marker. The selected country is
+// pinned first, then streaming countries alphabetically, then rent/buy-only.
+function buildAvailability(results, selectedCode) {
+  if (!results) return [];
+  const rows = [];
+  for (const cc of Object.keys(results)) {
+    const r = results[cc] || {};
+    const incl = [];
+    ["flatrate", "free", "ads"].forEach(cat => (r[cat] || []).forEach(p => incl.push(p.provider_name)));
+    const providers = [...new Set(incl)];
+    const hasPaid = ((r.rent || []).length + (r.buy || []).length) > 0;
+    if (!providers.length && !hasPaid) continue;
+    rows.push({ cc, providers, paidOnly: providers.length === 0 && hasPaid });
+  }
+  rows.sort((a, b) => {
+    if (a.cc === selectedCode) return -1;
+    if (b.cc === selectedCode) return 1;
+    if (a.paidOnly !== b.paidOnly) return a.paidOnly ? 1 : -1;
+    return countryName(a.cc).localeCompare(countryName(b.cc));
+  });
+  return rows;
+}
 
 // Format a YYYY-MM-DD date as e.g. "Jul 30, 2026" for the Upcoming tab.
 function fmtDate(s) {
@@ -292,7 +345,7 @@ function useApiKey() {
   return [key, setKey];
 }
 
-function Card({ item, onOpen }) {
+function Card({ item, onOpen, region }) {
   const title = item.title || item.name;
   const date = item.release_date || item.first_air_date || "";
   const year = date ? date.slice(0, 4) : "";
@@ -321,19 +374,28 @@ function Card({ item, onOpen }) {
             </div>
           ))}
           {!provs.length && !item._onPlex &&
-            <span className="none">Not on selected services in CA</span>}
+            <span className="none">Not on selected services in {region}</span>}
         </div>
       </div>
     </div>
   );
 }
 
-function Detail({ item, data, loading, onClose }) {
+function Detail({ item, data, loading, onClose, cname, countryCode }) {
   const title = item.title || item.name;
   const date = item.release_date || item.first_air_date || "";
   const year = date ? date.slice(0, 4) : "";
   const type = item.media_type === "tv" ? "TV" : "Movie";
   const provs = item._providers || [];
+
+  // Every country the title streams in (from the appended watch/providers).
+  const wp = data && data["watch/providers"] && data["watch/providers"].results;
+  const avail = buildAvailability(wp, countryCode);
+  const streamCount = avail.filter(r => !r.paidOnly).length;
+  const buyCount = avail.length - streamCount;
+  const availHeading = streamCount > 0
+    ? `Available to stream in ${streamCount} ${streamCount === 1 ? "country" : "countries"}`
+    : `Available to rent or buy in ${buyCount} ${buyCount === 1 ? "country" : "countries"}`;
 
   const trailer = data ? pickTrailer(data.videos) : null;
   const genres = (data && data.genres) || [];
@@ -396,7 +458,7 @@ function Detail({ item, data, loading, onClose }) {
 
           {(provs.length > 0 || item._onPlex) && (
             <div style={{ marginBottom: 18 }}>
-              <p className="sect">Where to watch (Canada)</p>
+              <p className="sect">Where to watch ({cname})</p>
               <div className="provs">
                 {item._onPlex && (
                   <div className="prov plex" title="In your Plex library"><span className="pill">▶ Plex</span></div>
@@ -405,6 +467,20 @@ function Detail({ item, data, loading, onClose }) {
                   <div key={p.provider_id} className="prov" title={p.provider_name + " · " + p.offer}>
                     <img src={LOGO + p.logo_path} alt={p.provider_name} />
                     <span className={"offer " + (p.paid ? "paid" : "incl")}>{p.offer}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {avail.length > 0 && (
+            <div style={{ marginBottom: 18 }}>
+              <p className="sect">{availHeading}</p>
+              <div className="avail">
+                {avail.map(r => (
+                  <div key={r.cc} className={"arow" + (r.cc === countryCode ? " here" : "")}>
+                    <span className="acc">{flag(r.cc)} {countryName(r.cc)}</span>
+                    <span className="aprov">{r.paidOnly ? "Rent / buy only" : r.providers.join(", ")}</span>
                   </div>
                 ))}
               </div>
@@ -444,6 +520,11 @@ function App() {
   const [genre, setGenre] = useState("");     // TMDB genre id as string ("" = all)
   const [minScore, setMinScore] = useState(0); // minimum TMDB vote_average (0 = any)
   const [genres, setGenres] = useState([]);    // {id, name} list for the dropdown
+  // Which country's streaming availability to show. Persisted so a returning
+  // user keeps their choice; defaults to Canada.
+  const [country, setCountry] = useState(() => {
+    try { return localStorage.getItem("cs_country") || REGION; } catch (e) { return REGION; }
+  });
   const [detail, setDetail] = useState(null);       // the item shown in the drawer
   const [detailData, setDetailData] = useState(null); // fetched TMDB details
   const [detailLoading, setDetailLoading] = useState(false);
@@ -518,7 +599,7 @@ function App() {
     setDetail(item); setDetailData(null); setDetailLoading(true);
     const media = item.media_type === "tv" ? "tv" : "movie";
     try {
-      const r = await tmdbGet(`/${media}/${item.id}`, { append_to_response: "videos,credits,external_ids" });
+      const r = await tmdbGet(`/${media}/${item.id}`, { append_to_response: "videos,credits,external_ids,watch/providers" });
       const d = await r.json();
       if (d.status_code) throw new Error(d.status_message || "TMDB error");
       if (live()) setDetailData(d);
@@ -576,7 +657,7 @@ function App() {
       try {
         const r = await tmdbGet(`/${media}/${it.id}/watch/providers`);
         const d = await r.json();
-        const ca = (d.results && d.results.CA) || {};
+        const ca = (d.results && d.results[country]) || {};
         // Pick, per provider, the best (cheapest) offer category that's allowed.
         const byProvider = new Map();
         for (const cat of cats) {
@@ -610,7 +691,7 @@ function App() {
       out.push(it);
     }
     return out;
-  }, [tmdbGet, selected, costFilter, plexEnabled]);
+  }, [tmdbGet, selected, costFilter, plexEnabled, country]);
 
   const runSearch = useCallback(async () => {
     if (!useProxy && !apiKey) { setError("Enter your TMDB API key first."); return; }
@@ -627,7 +708,7 @@ function App() {
       let items = [];
       if (mode === "search") {
         if (!query.trim()) { if (live()) setLoading(false); return; }
-        const r = await tmdbGet(`/search/multi`, { query, region: REGION, include_adult: false });
+        const r = await tmdbGet(`/search/multi`, { query, region: country, include_adult: false });
         const d = await r.json();
         if (d.status_code) throw new Error(d.status_message || "TMDB error");
         items = (d.results || []).filter(x => x.media_type === "movie" || x.media_type === "tv").slice(0, 20);
@@ -639,7 +720,7 @@ function App() {
         const tmdbIds = [...selected].filter(id => typeof id === "number");
         if (!tmdbIds.length) { if (live()) { setError("Select at least one streaming service to browse."); setLoading(false); } return; }
         const provParam = tmdbIds.join("|");
-        const r = await tmdbGet(`/discover/movie`, { watch_region: REGION, with_watch_providers: provParam, with_watch_monetization_types: monetizationParam(costFilter), sort_by: "popularity.desc", page: 1 });
+        const r = await tmdbGet(`/discover/movie`, { watch_region: country, with_watch_providers: provParam, with_watch_monetization_types: monetizationParam(costFilter), sort_by: "popularity.desc", page: 1 });
         const d = await r.json();
         if (d.status_code) throw new Error(d.status_message || "TMDB error");
         items = (d.results || []).slice(0, 20).map(x => ({ ...x, media_type: "movie" }));
@@ -652,8 +733,8 @@ function App() {
         // service — we just list them (badges still appear if TMDB has them).
         const today = new Date().toISOString().slice(0, 10);
         const [mr, tr] = await Promise.all([
-          tmdbGet(`/movie/upcoming`, { region: REGION, page: 1 }),
-          tmdbGet(`/discover/tv`, { watch_region: REGION, "first_air_date.gte": today, sort_by: "first_air_date.asc", page: 1 }),
+          tmdbGet(`/movie/upcoming`, { region: country, page: 1 }),
+          tmdbGet(`/discover/tv`, { watch_region: country, "first_air_date.gte": today, sort_by: "first_air_date.asc", page: 1 }),
         ]);
         const [md, td] = await Promise.all([mr.json(), tr.json()]);
         if (md.status_code) throw new Error(md.status_message || "TMDB error");
@@ -682,7 +763,7 @@ function App() {
     } finally {
       if (live()) setLoading(false);
     }
-  }, [apiKey, useProxy, mode, query, selected, costFilter, enrich, tmdbGet]);
+  }, [apiKey, useProxy, mode, query, selected, costFilter, enrich, tmdbGet, country]);
 
   // Live partial search: run automatically (debounced) as the user types.
   useEffect(() => {
@@ -694,8 +775,23 @@ function App() {
     return () => clearTimeout(t);
   }, [query, mode, selected, costFilter, runSearch]);
 
+  // Remember the chosen country across visits.
+  useEffect(() => {
+    try { localStorage.setItem("cs_country", country); } catch (e) {}
+  }, [country]);
+
+  // Changing the country re-runs the current view. Search mode re-runs on its
+  // own (runSearch identity changes above); the browse/trending/upcoming tabs
+  // are refreshed here so switching country updates them without a click.
+  useEffect(() => {
+    if (mode !== "search" && touched) runSearch();
+    // Intentionally keyed on `country` only — we want this on country change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [country]);
+
   // Genre + min-score are applied here, at render time, so changing either
   // instantly refines the current results without a new fetch.
+  const cname = countryName(country);
   const gid = genre ? Number(genre) : 0;
   const visible = results.filter(x =>
     (!gid || (x.genre_ids || []).includes(gid)) &&
@@ -706,7 +802,7 @@ function App() {
     <div className="wrap">
       <header>
         <h1><span className="leaf">🍁</span> CanaStream</h1>
-        <p>Search titles streaming in Canada across Netflix, Disney+, Prime Video, Crave, Apple TV+, YouTube — and your own Plex library.</p>
+        <p>Find where movies and TV shows are streaming — pick a country to see availability across Netflix, Disney+, Prime Video, Apple TV+ and more, plus your own Plex library.</p>
       </header>
 
       <div className="tabs">
@@ -724,6 +820,14 @@ function App() {
           <button onClick={runSearch} disabled={loading}>Search</button>
         </div>
       )}
+
+      <div className="costbar">
+        <span className="lbl">Country</span>
+        <select className="sel" value={country} onChange={e => setCountry(e.target.value)}>
+          {COUNTRIES.map(cc => <option key={cc} value={cc}>{flag(cc) + " " + countryName(cc)}</option>)}
+        </select>
+        <span className="lbl" style={{ opacity: 0.7 }}>availability shown for {cname}</span>
+      </div>
 
       <div className="costbar">
         <span className="lbl">Cost</span>
@@ -783,24 +887,24 @@ function App() {
         </div>
       )}
 
-      {loading && <div className="status"><div className="spinner"></div>Searching Canadian availability…</div>}
+      {loading && <div className="status"><div className="spinner"></div>Searching {cname} availability…</div>}
       {error && <div className="status" style={{ color: "#ff6b6b" }}>{error}</div>}
       {!loading && !error && touched && visible.length === 0 && (
         <div className="status">{results.length > 0
           ? "No titles match the current genre / score filters."
           : (mode === "upcoming"
             ? "No upcoming titles found right now."
-            : "No matches on the selected services in Canada.")}</div>
+            : "No matches on the selected services in " + cname + ".")}</div>
       )}
 
       <div className="grid">
-        {visible.map(item => <Card key={(item.media_type || "m") + item.id} item={item} onOpen={openDetail} />)}
+        {visible.map(item => <Card key={(item.media_type || "m") + item.id} item={item} onOpen={openDetail} region={country} />)}
       </div>
 
       {!touched && !loading &&
         <div className="status">Pick your services and search.</div>}
 
-      {detail && <Detail item={detail} data={detailData} loading={detailLoading} onClose={closeDetail} />}
+      {detail && <Detail item={detail} data={detailData} loading={detailLoading} onClose={closeDetail} cname={cname} countryCode={country} />}
     </div>
   );
 }

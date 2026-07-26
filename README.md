@@ -1,12 +1,14 @@
 # 🍁 CanaStream
 
-Search for titles streaming in **Canada** across Netflix, Disney+, Prime Video, and Crave — in a single, self-contained web page.
+Find where movies and TV shows are streaming — across Netflix, Disney+, Prime Video, Apple TV+ and more — in a single, self-contained web page. Defaults to **Canada**, with a country picker to check any major market.
 
-CanaStream queries [The Movie Database (TMDB)](https://www.themoviedb.org/) with `watch_region=CA`, so results reflect what's actually streamable in the Canadian region.
+CanaStream queries [The Movie Database (TMDB)](https://www.themoviedb.org/) with the selected `watch_region`, so results reflect what's actually streamable in that country.
 
 ## Features
 
-- **Search a title** — find a specific movie or show and see which of your selected services carry it in Canada.
+- **Country picker** — choose a country (Canada, US, UK, Australia, and more) to see availability there; the whole app — search, browse, trending, upcoming — follows your choice, which is remembered across visits.
+- **Where in the world** — opening a title's detail drawer lists **every country** it streams in and on which services, with your selected country pinned to the top.
+- **Search a title** — find a specific movie or show and see which of your selected services carry it in the chosen country.
 - **Browse by service** — list popular titles currently available on the services you pick.
 - **Trending now** — TMDB's most-searched/most-popular titles this week, filtered to what's streamable in Canada on your selected services.
 - **Upcoming** — upcoming theatrical movie releases in Canada plus TV shows with a future first-air date, merged and sorted by soonest, each showing its release date.
