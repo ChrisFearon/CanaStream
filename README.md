@@ -8,6 +8,7 @@ CanaStream queries [The Movie Database (TMDB)](https://www.themoviedb.org/) with
 
 - **Search a title** — find a specific movie or show and see which of your selected services carry it in Canada.
 - **Browse by service** — list popular titles currently available on the services you pick.
+- **Trending now** — TMDB's most-searched/most-popular titles this week, filtered to what's streamable in Canada on your selected services.
 - **Live provider data** — provider logos come straight from TMDB's Canadian availability data.
 - **No build step** — one HTML file, opens in any modern browser.
 

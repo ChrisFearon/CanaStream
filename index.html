@@ -178,7 +178,7 @@ function App() {
         items = (d.results || []).filter(x => x.media_type === "movie" || x.media_type === "tv").slice(0, 20);
         const enriched = await enrich(items);
         setResults(enriched.filter(x => x._providers.length > 0));
-      } else {
+      } else if (mode === "browse") {
         // Browse: what's currently available on the selected services in Canada
         const ids = [...selected];
         if (!ids.length) { setError("Select at least one service."); setLoading(false); return; }
@@ -189,6 +189,14 @@ function App() {
         items = (d.results || []).slice(0, 20).map(x => ({ ...x, media_type: "movie" }));
         const enriched = await enrich(items);
         setResults(enriched);
+      } else {
+        // Trending: TMDB's most-searched / most-popular titles this week
+        const r = await fetch(`${API}/trending/all/week?api_key=${apiKey}`);
+        const d = await r.json();
+        if (d.status_code) throw new Error(d.status_message || "TMDB error");
+        items = (d.results || []).filter(x => x.media_type === "movie" || x.media_type === "tv").slice(0, 20);
+        const enriched = await enrich(items);
+        setResults(enriched.filter(x => x._providers.length > 0));
       }
     } catch (e) {
       setError(e.message || "Something went wrong.");
@@ -216,6 +224,7 @@ function App() {
       <div className="tabs">
         <button className={mode === "search" ? "active" : ""} onClick={() => setMode("search")}>Search a title</button>
         <button className={mode === "browse" ? "active" : ""} onClick={() => setMode("browse")}>Browse by service</button>
+        <button className={mode === "trending" ? "active" : ""} onClick={() => setMode("trending")}>Trending now</button>
       </div>
 
       {mode === "search" && (
@@ -239,6 +248,12 @@ function App() {
       {mode === "browse" && (
         <div style={{ marginBottom: 16 }}>
           <button onClick={runSearch} disabled={loading}>Show popular titles on selected services</button>
+        </div>
+      )}
+
+      {mode === "trending" && (
+        <div style={{ marginBottom: 16 }}>
+          <button onClick={runSearch} disabled={loading}>Show what's trending this week</button>
         </div>
       )}
 
