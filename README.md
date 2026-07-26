@@ -12,7 +12,7 @@ CanaStream queries [The Movie Database (TMDB)](https://www.themoviedb.org/) with
 - **Upcoming** — upcoming theatrical movie releases in Canada plus TV shows with a future first-air date, merged and sorted by soonest, each showing its release date.
 - **Cost filter** — show titles that are included with a subscription (free/included), available to rent or buy (paid), or both. Each provider is labelled Included / Free / Rent / Buy.
 - **Genre & score filters** — narrow the current results by genre and by minimum score (TMDB `vote_average`, 0–10). Both apply instantly to whatever is on screen, in any tab.
-- **True IMDb ratings** — when an OMDb key is configured, opening a title's detail drawer shows its real **IMDb** rating (and vote count), linked to the IMDb page.
+- **IMDb & Rotten Tomatoes** — when an OMDb key is configured, opening a title's detail drawer shows its real **IMDb** rating (and vote count, linked to IMDb) plus the **Rotten Tomatoes** critics' Tomatometer. Both come from a single OMDb lookup. (RT data is mostly available for movies; audience scores aren't exposed by OMDb.)
 - **Live provider data** — provider logos come straight from TMDB's Canadian availability data.
 - **Your Plex library** — when a Plex server is configured, any result you already own shows an **▶ Plex** badge, and a **My Plex** filter chip lets you narrow results to titles in your library.
 - **No build step** — one HTML file, opens in any modern browser.
@@ -115,10 +115,10 @@ npx wrangler secret put OMDB_API_KEY
 ```
 
 `worker.js` exposes a secure `/api/omdb` proxy (edge-cached for a day, since
-IMDb ratings change slowly). When the secret is set, opening a title fetches its
-`imdb_id` from TMDB, looks the rating up on OMDb, and shows an **IMDb** badge in
-the drawer. If the key is absent the app simply omits the badge — nothing else
-changes.
+these ratings change slowly). When the secret is set, opening a title fetches
+its `imdb_id` from TMDB, looks it up on OMDb, and shows **IMDb** and **Rotten
+Tomatoes** badges in the drawer — both parsed from the same response. If the key
+is absent the app simply omits the badges — nothing else changes.
 
 ## License
 

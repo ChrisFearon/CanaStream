@@ -147,6 +147,12 @@
     background: #f5c518; color: #000; border-radius: 4px; padding: 2px 7px;
     text-decoration: none; letter-spacing: 0.2px;
   }
+  .dmeta .rt {
+    display: inline-flex; align-items: center; font-size: 12px; font-weight: 800;
+    color: #fff; border-radius: 4px; padding: 2px 7px; letter-spacing: 0.2px;
+  }
+  .dmeta .rt.fresh { background: #fa320a; }   /* Tomatometer >= 60% */
+  .dmeta .rt.rotten { background: #16a34a; }  /* Tomatometer < 60% */
   .genrow { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
   .genre { font-size: 11px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; color: var(--muted); }
   .overview { font-size: 14px; line-height: 1.55; margin: 0 0 18px; }
@@ -362,6 +368,12 @@ function Detail({ item, data, loading, onClose }) {
                 IMDb {data._imdb.rating}
               </a>
             )}
+            {data && data._rt && (
+              <span className={"rt" + (parseInt(data._rt, 10) >= 60 ? " fresh" : " rotten")}
+                    title="Rotten Tomatoes — critics (Tomatometer)">
+                🍅 {data._rt}
+              </span>
+            )}
           </div>
 
           {loading && <div className="dloading"><div className="spinner"></div>Loading details…</div>}
@@ -518,10 +530,18 @@ function App() {
           const or = await fetch(`/api/omdb?i=${encodeURIComponent(imdbId)}`);
           if (or.ok) {
             const od = await or.json();
-            if (od && od.Response === "True" && od.imdbRating && od.imdbRating !== "N/A" && live()) {
-              setDetailData(prev => prev
-                ? { ...prev, _imdb: { rating: od.imdbRating, votes: od.imdbVotes, id: imdbId } }
-                : prev);
+            if (od && od.Response === "True" && live()) {
+              // OMDb bundles IMDb, Rotten Tomatoes (critics) and Metacritic in
+              // one response, so both scores come from this single lookup.
+              const rt = (od.Ratings || []).find(x => x.Source === "Rotten Tomatoes");
+              const patch = {};
+              if (od.imdbRating && od.imdbRating !== "N/A") {
+                patch._imdb = { rating: od.imdbRating, votes: od.imdbVotes, id: imdbId };
+              }
+              if (rt && rt.Value) patch._rt = rt.Value; // e.g. "91%"
+              if (Object.keys(patch).length) {
+                setDetailData(prev => prev ? { ...prev, ...patch } : prev);
+              }
             }
           }
         } catch (e) { /* IMDb is optional — never block the drawer */ }
