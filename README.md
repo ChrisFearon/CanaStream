@@ -11,6 +11,7 @@ CanaStream queries [The Movie Database (TMDB)](https://www.themoviedb.org/) with
 - **Trending now** — TMDB's most-searched/most-popular titles this week, filtered to what's streamable in Canada on your selected services.
 - **Cost filter** — show titles that are included with a subscription (free/included), available to rent or buy (paid), or both. Each provider is labelled Included / Free / Rent / Buy.
 - **Live provider data** — provider logos come straight from TMDB's Canadian availability data.
+- **Your Plex library** — when a Plex server is configured, any result you already own shows an **▶ Plex** badge, and a **My Plex** filter chip lets you narrow results to titles in your library.
 - **No build step** — one HTML file, opens in any modern browser.
 
 ## Setup
@@ -66,6 +67,33 @@ npx wrangler secret put TMDB_API_KEY
 When the secret is present, the page auto-detects the proxy and hides the key
 field. Opening `public/index.html` locally (no Worker) still falls back to
 manual entry.
+
+### Connecting a Plex server
+
+The app can cross-reference your own Plex Media Server. Add two more Worker
+secrets:
+
+| Secret            | Value                                                        |
+|-------------------|--------------------------------------------------------------|
+| `PLEX_SERVER_URL` | Base URL of your Plex server, e.g. `https://xxx.plex.direct:32400` |
+| `PLEX_TOKEN`      | Your Plex auth token (`X-Plex-Token`)                        |
+
+```bash
+npx wrangler secret put PLEX_SERVER_URL
+npx wrangler secret put PLEX_TOKEN
+```
+
+`worker.js` exposes a secure `/api/plex` proxy that forwards a universal search
+to your server with the token attached — the token and URL never reach the
+browser. When both secrets are set, the page shows the **▶ Plex** badge and the
+**My Plex** filter chip automatically.
+
+> **Reachability:** Cloudflare runs the proxy at the edge, so `PLEX_SERVER_URL`
+> must be reachable from the public internet with a **valid TLS certificate**. A
+> LAN address like `http://192.168.x.x:32400` will not work. The simplest
+> option is Plex's own `https://<id>.plex.direct:32400` domain (remote access
+> enabled), which ships a trusted cert; a Cloudflare Tunnel to your server also
+> works.
 
 ## License
 

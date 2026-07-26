@@ -23,6 +23,10 @@ export default {
       return handleTmdb(url, env);
     }
 
+    if (url.pathname === "/api/plex") {
+      return handlePlex(url, env);
+    }
+
     // Everything else: serve static assets (index.html, etc.).
     return env.ASSETS.fetch(request);
   },
@@ -61,6 +65,53 @@ async function handleTmdb(url, env) {
       "content-type": "application/json; charset=utf-8",
       // Cache reads at the edge for 5 minutes to spare your TMDB quota.
       "cache-control": "public, max-age=300",
+    },
+  });
+}
+
+// Secure proxy to a personal Plex Media Server. The server URL and token live
+// in env.PLEX_SERVER_URL / env.PLEX_TOKEN as Worker secrets, so they are never
+// exposed to the browser. With no `query`, this acts as a config probe.
+async function handlePlex(url, env) {
+  const base = env.PLEX_SERVER_URL;
+  const token = env.PLEX_TOKEN;
+
+  if (!base || !token) {
+    // Secrets not set — tell the client Plex is unavailable.
+    return json({ error: "not_configured" }, 503);
+  }
+
+  const query = url.searchParams.get("query");
+  if (!query) {
+    // Lightweight probe used by the UI to decide whether to show Plex features.
+    return json({ configured: true }, 200);
+  }
+
+  // Plex's universal search hub. Token is passed as a query param and never
+  // forwarded to the browser.
+  const plexUrl = new URL(base.replace(/\/+$/, "") + "/hubs/search");
+  plexUrl.searchParams.set("query", query);
+  plexUrl.searchParams.set("limit", "20");
+  plexUrl.searchParams.set("X-Plex-Token", token);
+
+  let upstream;
+  try {
+    upstream = await fetch(plexUrl.toString(), {
+      headers: { accept: "application/json" },
+    });
+  } catch (e) {
+    // Most common cause: the server URL is not reachable from Cloudflare's
+    // edge (a LAN address) or presents an untrusted TLS certificate.
+    return json({ error: "plex_unreachable", detail: String(e) }, 502);
+  }
+
+  const body = await upstream.text();
+  return new Response(body, {
+    status: upstream.status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      // Personal data — keep it out of shared/edge caches, brief client cache.
+      "cache-control": "private, max-age=60",
     },
   });
 }

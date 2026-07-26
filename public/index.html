@@ -89,6 +89,13 @@
   .prov .offer.incl { background: rgba(52,199,89,0.16); color: #4ade80; }
   .prov .offer.paid { background: rgba(255,159,10,0.16); color: #fbbf24; }
   .provs .none { font-size: 11px; color: var(--muted); }
+  .prov.plex { width: auto; justify-content: center; }
+  .prov.plex .pill {
+    display: inline-flex; align-items: center; height: 30px; padding: 0 10px;
+    border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.3px;
+    background: #1f1300; color: #e5a00d; border: 1px solid #e5a00d;
+  }
+  .chip.plexchip.on { background: rgba(229,160,13,0.15); border-color: #e5a00d; }
   .costbar { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
   .costbar .lbl { font-size: 12px; color: var(--muted); }
   .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
@@ -141,6 +148,48 @@ const SERVICES = [
   { id: 350, name: "Apple TV+" },
 ];
 
+// Sentinel "service" id for a personal Plex library. Never sent to TMDB;
+// used only for client-side filtering + badging.
+const PLEX_ID = "plex";
+
+// Plex search responses vary by server version. Flatten the common shapes
+// (Hub[].Metadata, SearchResult[].Metadata, top-level Metadata) into a list.
+function extractPlexItems(d) {
+  const mc = d && d.MediaContainer;
+  if (!mc) return [];
+  let out = [];
+  const push = (arr) => { if (Array.isArray(arr)) out = out.concat(arr); };
+  if (Array.isArray(mc.Hub)) mc.Hub.forEach(h => { push(h.Metadata); push(h.Directory); });
+  push(mc.Metadata);
+  if (Array.isArray(mc.SearchResult)) {
+    mc.SearchResult.forEach(s => { if (s.Metadata) out.push(s.Metadata); });
+  }
+  return out;
+}
+
+const normTitle = (t) => (t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+// Does a title exist in the Plex library? Matches on normalized title + year
+// (±1) and media type. Returns false on any error so Plex never breaks search.
+async function isOnPlex(title, year, mediaType) {
+  try {
+    const r = await fetch(`/api/plex?query=${encodeURIComponent(title)}`);
+    if (!r.ok) return false;
+    const items = extractPlexItems(await r.json());
+    const nt = normTitle(title);
+    const wantType = mediaType === "tv" ? "show" : "movie";
+    return items.some(m => {
+      const mt = normTitle(m.title);
+      const titleOk = mt && (mt === nt || mt.includes(nt) || nt.includes(mt));
+      const yearOk = !year || !m.year || Math.abs(Number(m.year) - Number(year)) <= 1;
+      const typeOk = !m.type || m.type === wantType;
+      return titleOk && yearOk && typeOk;
+    });
+  } catch (e) {
+    return false;
+  }
+}
+
 function useApiKey() {
   const [key, setKey] = useState("");
   return [key, setKey];
@@ -161,14 +210,19 @@ function Card({ item }) {
         <div className="badge">{type}{year ? " · " + year : ""}</div>
         <p className="title">{title}</p>
         <div className="provs">
-          {provs.length
-            ? provs.map(p => (
-                <div key={p.provider_id} className="prov" title={p.provider_name + " · " + p.offer}>
-                  <img src={LOGO + p.logo_path} alt={p.provider_name} />
-                  <span className={"offer " + (p.paid ? "paid" : "incl")}>{p.offer}</span>
-                </div>
-              ))
-            : <span className="none">Not on selected services in CA</span>}
+          {item._onPlex && (
+            <div className="prov plex" title="In your Plex library">
+              <span className="pill">▶ Plex</span>
+            </div>
+          )}
+          {provs.map(p => (
+            <div key={p.provider_id} className="prov" title={p.provider_name + " · " + p.offer}>
+              <img src={LOGO + p.logo_path} alt={p.provider_name} />
+              <span className={"offer " + (p.paid ? "paid" : "incl")}>{p.offer}</span>
+            </div>
+          ))}
+          {!provs.length && !item._onPlex &&
+            <span className="none">Not on selected services in CA</span>}
         </div>
       </div>
     </div>
@@ -179,12 +233,13 @@ function App() {
   const [apiKey, setApiKey] = useApiKey();
   const [mode, setMode] = useState("search"); // "search" | "browse" | "trending"
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState(new Set([8, 337, 9, 230, 350]));
+  const [selected, setSelected] = useState(new Set([8, 337, 9, 230, 350, PLEX_ID]));
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [touched, setTouched] = useState(false);
   const [useProxy, setUseProxy] = useState(false);
+  const [plexEnabled, setPlexEnabled] = useState(false);
   const [costFilter, setCostFilter] = useState("both"); // "free" | "paid" | "both"
 
   // Detect the Cloudflare Worker proxy that holds the key server-side.
@@ -194,6 +249,10 @@ function App() {
     let alive = true;
     fetch("/api/tmdb?path=/configuration")
       .then(r => { if (alive && r.ok) setUseProxy(true); })
+      .catch(() => {});
+    // Probe the Plex proxy (no query = config check). 200 => secrets are set.
+    fetch("/api/plex")
+      .then(r => { if (alive && r.ok) setPlexEnabled(true); })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
@@ -245,18 +304,31 @@ function App() {
           paid: PAID_CATS.includes(p._cat),
         }));
         it.media_type = media;
-        out.push(it);
       } catch (e) {
         it._providers = [];
-        out.push(it);
+        it.media_type = media;
       }
+      // Check the personal Plex library for a match (powers the badge + filter).
+      // Cheap enough for the ≤20 results we render.
+      if (plexEnabled) {
+        const title = it.title || it.name;
+        const date = it.release_date || it.first_air_date || "";
+        it._onPlex = await isOnPlex(title, date.slice(0, 4), it.media_type);
+      } else {
+        it._onPlex = false;
+      }
+      out.push(it);
     }
     return out;
-  }, [tmdbGet, selected, costFilter]);
+  }, [tmdbGet, selected, costFilter, plexEnabled]);
 
   const runSearch = useCallback(async () => {
     if (!useProxy && !apiKey) { setError("Enter your TMDB API key first."); return; }
     setTouched(true); setError(""); setLoading(true); setResults([]);
+    // A title passes when it's on a selected streaming service, or — with the
+    // Plex chip on — it's in your Plex library.
+    const plexOn = selected.has(PLEX_ID);
+    const passes = (x) => x._providers.length > 0 || (plexOn && x._onPlex);
     try {
       let items = [];
       if (mode === "search") {
@@ -266,12 +338,13 @@ function App() {
         if (d.status_code) throw new Error(d.status_message || "TMDB error");
         items = (d.results || []).filter(x => x.media_type === "movie" || x.media_type === "tv").slice(0, 20);
         const enriched = await enrich(items);
-        setResults(enriched.filter(x => x._providers.length > 0));
+        setResults(enriched.filter(passes));
       } else if (mode === "browse") {
-        // Browse: what's currently available on the selected services in Canada
-        const ids = [...selected];
-        if (!ids.length) { setError("Select at least one service."); setLoading(false); return; }
-        const provParam = ids.join("|");
+        // Browse: what's currently available on the selected services in Canada.
+        // Discover is TMDB-only, so the Plex sentinel is excluded here.
+        const tmdbIds = [...selected].filter(id => typeof id === "number");
+        if (!tmdbIds.length) { setError("Select at least one streaming service to browse."); setLoading(false); return; }
+        const provParam = tmdbIds.join("|");
         const r = await tmdbGet(`/discover/movie`, { watch_region: REGION, with_watch_providers: provParam, with_watch_monetization_types: monetizationParam(costFilter), sort_by: "popularity.desc", page: 1 });
         const d = await r.json();
         if (d.status_code) throw new Error(d.status_message || "TMDB error");
@@ -285,7 +358,7 @@ function App() {
         if (d.status_code) throw new Error(d.status_message || "TMDB error");
         items = (d.results || []).filter(x => x.media_type === "movie" || x.media_type === "tv").slice(0, 20);
         const enriched = await enrich(items);
-        setResults(enriched.filter(x => x._providers.length > 0));
+        setResults(enriched.filter(passes));
       }
     } catch (e) {
       setError(e.message || "Something went wrong.");
@@ -306,7 +379,7 @@ function App() {
     <div className="wrap">
       <header>
         <h1><span className="leaf">🍁</span> CanaStream</h1>
-        <p>Search titles streaming in Canada across Netflix, Disney+, Prime Video, Crave, and Apple TV+.</p>
+        <p>Search titles streaming in Canada across Netflix, Disney+, Prime Video, Crave, Apple TV+ — and your own Plex library.</p>
       </header>
 
       <div className="tabs">
@@ -340,6 +413,12 @@ function App() {
             {selected.has(s.id) ? "✓ " : ""}{s.name}
           </span>
         ))}
+        {plexEnabled && (
+          <span className={"chip plexchip" + (selected.has(PLEX_ID) ? " on" : "")}
+                onClick={() => toggle(PLEX_ID)}>
+            {selected.has(PLEX_ID) ? "✓ " : ""}▶ My Plex
+          </span>
+        )}
       </div>
 
       {mode === "browse" && (
