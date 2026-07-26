@@ -21,14 +21,31 @@
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background: var(--bg);
     color: var(--text);
+    min-height: 100vh;
+    background:
+      radial-gradient(1100px 560px at 12% -12%, rgba(229,9,20,0.20), transparent 60%),
+      radial-gradient(950px 650px at 100% -5%, rgba(37,99,235,0.18), transparent 55%),
+      radial-gradient(1000px 900px at 50% 118%, rgba(139,92,246,0.16), transparent 60%),
+      linear-gradient(180deg, #0b0d12 0%, #0a0c10 100%);
+    background-attachment: fixed;
+  }
+  /* Faint film-strip texture over the whole page */
+  body::before {
+    content: "";
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    opacity: 0.05;
+    background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='120'%20height='120'%3E%3Cg%20fill='%23ffffff'%3E%3Crect%20x='8'%20y='10'%20width='12'%20height='18'%20rx='3'/%3E%3Crect%20x='8'%20y='40'%20width='12'%20height='18'%20rx='3'/%3E%3Crect%20x='8'%20y='70'%20width='12'%20height='18'%20rx='3'/%3E%3Crect%20x='8'%20y='100'%20width='12'%20height='18'%20rx='3'/%3E%3Crect%20x='100'%20y='10'%20width='12'%20height='18'%20rx='3'/%3E%3Crect%20x='100'%20y='40'%20width='12'%20height='18'%20rx='3'/%3E%3Crect%20x='100'%20y='70'%20width='12'%20height='18'%20rx='3'/%3E%3Crect%20x='100'%20y='100'%20width='12'%20height='18'%20rx='3'/%3E%3C/g%3E%3C/svg%3E");
   }
   a { color: inherit; }
-  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
-  header h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: -0.5px; }
-  header h1 .leaf { color: var(--accent); }
-  header p { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+  .wrap { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 40px 20px 60px; }
+  header h1 {
+    font-size: 34px; margin: 0 0 6px; letter-spacing: -0.6px; font-weight: 800;
+    background: linear-gradient(90deg, #fff 0%, #ffd7d9 40%, var(--accent) 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  header h1 .leaf { -webkit-text-fill-color: initial; }
+  header p { color: var(--muted); margin: 0 0 22px; font-size: 14px; }
   .keybar {
     display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
     background: var(--panel); border: 1px solid var(--border);
@@ -65,9 +82,19 @@
   .card .meta { padding: 10px 12px 12px; }
   .card .title { font-size: 14px; font-weight: 600; line-height: 1.3; margin: 0 0 4px; }
   .card .sub { font-size: 12px; color: var(--muted); margin: 0 0 8px; }
-  .provs { display: flex; gap: 6px; flex-wrap: wrap; }
-  .provs img { width: 26px; height: 26px; border-radius: 6px; }
+  .provs { display: flex; gap: 8px; flex-wrap: wrap; }
+  .prov { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 44px; }
+  .prov img { width: 30px; height: 30px; border-radius: 6px; }
+  .prov .offer { font-size: 9px; line-height: 1; text-align: center; padding: 2px 4px; border-radius: 4px; white-space: nowrap; }
+  .prov .offer.incl { background: rgba(52,199,89,0.16); color: #4ade80; }
+  .prov .offer.paid { background: rgba(255,159,10,0.16); color: #fbbf24; }
   .provs .none { font-size: 11px; color: var(--muted); }
+  .costbar { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+  .costbar .lbl { font-size: 12px; color: var(--muted); }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { background: var(--panel-2); color: var(--muted); border: none; border-right: 1px solid var(--border); border-radius: 0; padding: 7px 14px; font-size: 13px; font-weight: 500; }
+  .seg button:last-child { border-right: none; }
+  .seg button.active { background: var(--accent); color: #fff; }
   .status { color: var(--muted); font-size: 14px; padding: 30px 0; text-align: center; }
   .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
   .hint a { color: var(--accent); text-decoration: none; }
@@ -85,6 +112,25 @@ const API = "https://api.themoviedb.org/3";
 const IMG = "https://image.tmdb.org/t/p/w342";
 const LOGO = "https://image.tmdb.org/t/p/original";
 const REGION = "CA";
+
+// TMDB offer categories → friendly labels shown on each result.
+const CAT_LABEL = { flatrate: "Included", free: "Free", ads: "Free · ads", rent: "Rent", buy: "Buy" };
+// Priority when a provider offers a title several ways (best/cheapest first).
+const PRIORITY = ["flatrate", "free", "ads", "rent", "buy"];
+const FREE_CATS = ["flatrate", "free", "ads"]; // included with a subscription / no extra cost
+const PAID_CATS = ["rent", "buy"];             // pay per title
+
+function catsForFilter(costFilter) {
+  if (costFilter === "free") return FREE_CATS;
+  if (costFilter === "paid") return PAID_CATS;
+  return PRIORITY; // both
+}
+// TMDB discover monetization param for the given cost filter (browse mode).
+function monetizationParam(costFilter) {
+  if (costFilter === "free") return "flatrate|free|ads";
+  if (costFilter === "paid") return "rent|buy";
+  return "flatrate|free|ads|rent|buy";
+}
 
 // Target services with stable TMDB provider IDs (Canada)
 const SERVICES = [
@@ -117,8 +163,10 @@ function Card({ item }) {
         <div className="provs">
           {provs.length
             ? provs.map(p => (
-                <img key={p.provider_id} src={LOGO + p.logo_path}
-                     title={p.provider_name} alt={p.provider_name} />
+                <div key={p.provider_id} className="prov" title={p.provider_name + " · " + p.offer}>
+                  <img src={LOGO + p.logo_path} alt={p.provider_name} />
+                  <span className={"offer " + (p.paid ? "paid" : "incl")}>{p.offer}</span>
+                </div>
               ))
             : <span className="none">Not on selected services in CA</span>}
         </div>
@@ -137,6 +185,7 @@ function App() {
   const [error, setError] = useState("");
   const [touched, setTouched] = useState(false);
   const [useProxy, setUseProxy] = useState(false);
+  const [costFilter, setCostFilter] = useState("both"); // "free" | "paid" | "both"
 
   // Detect the Cloudflare Worker proxy that holds the key server-side.
   // If present (200), we never ask for a key. If not (503/404/offline file://),
@@ -167,8 +216,11 @@ function App() {
     setSelected(next);
   };
 
-  // Attach CA providers to a list of titles, then filter by selected services.
+  // Attach CA providers to each title across the allowed cost categories,
+  // labelling each provider (Included / Free / Rent / Buy) and filtering by
+  // the selected services.
   const enrich = useCallback(async (items) => {
+    const cats = catsForFilter(costFilter);
     const out = [];
     for (const it of items) {
       const media = (it.media_type === "tv" || (!it.title && it.name)) ? "tv" : "movie";
@@ -176,9 +228,22 @@ function App() {
         const r = await tmdbGet(`/${media}/${it.id}/watch/providers`);
         const d = await r.json();
         const ca = (d.results && d.results.CA) || {};
-        const flat = ca.flatrate || [];
-        const matched = flat.filter(p => selected.has(p.provider_id));
-        it._providers = matched;
+        // Pick, per provider, the best (cheapest) offer category that's allowed.
+        const byProvider = new Map();
+        for (const cat of cats) {
+          for (const p of (ca[cat] || [])) {
+            if (!selected.has(p.provider_id)) continue;
+            const existing = byProvider.get(p.provider_id);
+            if (!existing || PRIORITY.indexOf(cat) < PRIORITY.indexOf(existing._cat)) {
+              byProvider.set(p.provider_id, { ...p, _cat: cat });
+            }
+          }
+        }
+        it._providers = [...byProvider.values()].map(p => ({
+          ...p,
+          offer: CAT_LABEL[p._cat],
+          paid: PAID_CATS.includes(p._cat),
+        }));
         it.media_type = media;
         out.push(it);
       } catch (e) {
@@ -187,7 +252,7 @@ function App() {
       }
     }
     return out;
-  }, [tmdbGet, selected]);
+  }, [tmdbGet, selected, costFilter]);
 
   const runSearch = useCallback(async () => {
     if (!useProxy && !apiKey) { setError("Enter your TMDB API key first."); return; }
@@ -207,7 +272,7 @@ function App() {
         const ids = [...selected];
         if (!ids.length) { setError("Select at least one service."); setLoading(false); return; }
         const provParam = ids.join("|");
-        const r = await tmdbGet(`/discover/movie`, { watch_region: REGION, with_watch_providers: provParam, sort_by: "popularity.desc", page: 1 });
+        const r = await tmdbGet(`/discover/movie`, { watch_region: REGION, with_watch_providers: provParam, with_watch_monetization_types: monetizationParam(costFilter), sort_by: "popularity.desc", page: 1 });
         const d = await r.json();
         if (d.status_code) throw new Error(d.status_message || "TMDB error");
         items = (d.results || []).slice(0, 20).map(x => ({ ...x, media_type: "movie" }));
@@ -227,7 +292,15 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [apiKey, useProxy, mode, query, selected, enrich, tmdbGet]);
+  }, [apiKey, useProxy, mode, query, selected, costFilter, enrich, tmdbGet]);
+
+  // Live partial search: run automatically (debounced) as the user types.
+  useEffect(() => {
+    if (mode !== "search") return;
+    if (query.trim().length < 2) { setResults([]); setTouched(false); return; }
+    const t = setTimeout(() => { runSearch(); }, 450);
+    return () => clearTimeout(t);
+  }, [query, mode, selected, costFilter, runSearch]);
 
   return (
     <div className="wrap">
@@ -235,21 +308,6 @@ function App() {
         <h1><span className="leaf">🍁</span> CanaStream</h1>
         <p>Search titles streaming in Canada across Netflix, Disney+, Prime Video, Crave, and Apple TV+.</p>
       </header>
-
-      {useProxy ? (
-        <div className="keybar">
-          <span className="hint">🔒 Using the API key stored securely on Cloudflare — no key needed here.</span>
-        </div>
-      ) : (
-        <div className="keybar">
-          <label>TMDB API key</label>
-          <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)}
-                 placeholder="paste your key" style={{ minWidth: 240 }} />
-          <span className="hint">
-            Free from <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">themoviedb.org</a> (API Read → v3 key)
-          </span>
-        </div>
-      )}
 
       <div className="tabs">
         <button className={mode === "search" ? "active" : ""} onClick={() => setMode("search")}>Search a title</button>
@@ -259,12 +317,21 @@ function App() {
 
       {mode === "search" && (
         <div className="searchrow">
-          <input type="text" value={query} placeholder="e.g. Schitt's Creek, Dune, The Bear"
+          <input type="text" value={query} placeholder="Type part of a title… e.g. schit, dune, the bear"
                  onChange={e => setQuery(e.target.value)}
                  onKeyDown={e => e.key === "Enter" && runSearch()} />
           <button onClick={runSearch} disabled={loading}>Search</button>
         </div>
       )}
+
+      <div className="costbar">
+        <span className="lbl">Cost</span>
+        <div className="seg">
+          <button className={costFilter === "free" ? "active" : ""} onClick={() => setCostFilter("free")}>Included / free</button>
+          <button className={costFilter === "paid" ? "active" : ""} onClick={() => setCostFilter("paid")}>Rent / buy</button>
+          <button className={costFilter === "both" ? "active" : ""} onClick={() => setCostFilter("both")}>Both</button>
+        </div>
+      </div>
 
       <div className="chips">
         {SERVICES.map(s => (
