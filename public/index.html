@@ -142,6 +142,11 @@
   .dbody h2 { margin: 0 0 6px; font-size: 22px; letter-spacing: -0.3px; }
   .dmeta { color: var(--muted); font-size: 13px; margin: 0 0 14px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   .dmeta .rating { color: #fbbf24; font-weight: 700; }
+  .dmeta .imdb {
+    display: inline-flex; align-items: center; font-size: 12px; font-weight: 800;
+    background: #f5c518; color: #000; border-radius: 4px; padding: 2px 7px;
+    text-decoration: none; letter-spacing: 0.2px;
+  }
   .genrow { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
   .genre { font-size: 11px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; color: var(--muted); }
   .overview { font-size: 14px; line-height: 1.55; margin: 0 0 18px; }
@@ -349,7 +354,14 @@ function Detail({ item, data, loading, onClose }) {
             <span>{type}</span>
             {year && <span>· {year}</span>}
             {(runtime || seasons) && <span>· {runtime || seasons}</span>}
-            {rating > 0 && <span className="rating">★ {rating.toFixed(1)}</span>}
+            {rating > 0 && <span className="rating" title="TMDB rating">★ {rating.toFixed(1)}</span>}
+            {data && data._imdb && (
+              <a className="imdb" href={`https://www.imdb.com/title/${data._imdb.id}/`}
+                 target="_blank" rel="noopener"
+                 title={data._imdb.votes && data._imdb.votes !== "N/A" ? data._imdb.votes + " IMDb votes" : "IMDb rating"}>
+                IMDb {data._imdb.rating}
+              </a>
+            )}
           </div>
 
           {loading && <div className="dloading"><div className="spinner"></div>Loading details…</div>}
@@ -415,6 +427,7 @@ function App() {
   const [touched, setTouched] = useState(false);
   const [useProxy, setUseProxy] = useState(false);
   const [plexEnabled, setPlexEnabled] = useState(false);
+  const [omdbEnabled, setOmdbEnabled] = useState(false);
   const [costFilter, setCostFilter] = useState("both"); // "free" | "paid" | "both"
   const [genre, setGenre] = useState("");     // TMDB genre id as string ("" = all)
   const [minScore, setMinScore] = useState(0); // minimum TMDB vote_average (0 = any)
@@ -427,6 +440,9 @@ function App() {
   // earlier query (e.g. "the be…") from clobbering a newer one ("the bear")
   // when its enrich() fetches resolve out of order.
   const reqRef = useRef(0);
+  // Same idea for the detail drawer: guards the async detail + IMDb fetch so a
+  // slow response can't populate a drawer the user has since closed/changed.
+  const detailReqRef = useRef(0);
 
   // Detect the Cloudflare Worker proxy that holds the key server-side.
   // If present (200), we never ask for a key. If not (503/404/offline file://),
@@ -439,6 +455,10 @@ function App() {
     // Probe the Plex proxy (no query = config check). 200 => secrets are set.
     fetch("/api/plex")
       .then(r => { if (alive && r.ok) setPlexEnabled(true); })
+      .catch(() => {});
+    // Probe the OMDb proxy (no id = config check). 200 => IMDb ratings available.
+    fetch("/api/omdb")
+      .then(r => { if (alive && r.ok) setOmdbEnabled(true); })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
@@ -481,19 +501,37 @@ function App() {
 
   // Open the detail drawer for an item and fetch full details + trailers.
   const openDetail = useCallback(async (item) => {
+    const myId = ++detailReqRef.current;
+    const live = () => detailReqRef.current === myId;
     setDetail(item); setDetailData(null); setDetailLoading(true);
     const media = item.media_type === "tv" ? "tv" : "movie";
     try {
-      const r = await tmdbGet(`/${media}/${item.id}`, { append_to_response: "videos,credits" });
+      const r = await tmdbGet(`/${media}/${item.id}`, { append_to_response: "videos,credits,external_ids" });
       const d = await r.json();
       if (d.status_code) throw new Error(d.status_message || "TMDB error");
-      setDetailData(d);
+      if (live()) setDetailData(d);
+      // Best-effort: fetch the real IMDb rating via OMDb and merge it in. The
+      // drawer already shows, so this just fills in the IMDb badge when ready.
+      const imdbId = d.external_ids && d.external_ids.imdb_id;
+      if (omdbEnabled && imdbId) {
+        try {
+          const or = await fetch(`/api/omdb?i=${encodeURIComponent(imdbId)}`);
+          if (or.ok) {
+            const od = await or.json();
+            if (od && od.Response === "True" && od.imdbRating && od.imdbRating !== "N/A" && live()) {
+              setDetailData(prev => prev
+                ? { ...prev, _imdb: { rating: od.imdbRating, votes: od.imdbVotes, id: imdbId } }
+                : prev);
+            }
+          }
+        } catch (e) { /* IMDb is optional — never block the drawer */ }
+      }
     } catch (e) {
-      setDetailData(null);
+      if (live()) setDetailData(null);
     } finally {
-      setDetailLoading(false);
+      if (live()) setDetailLoading(false);
     }
-  }, [tmdbGet]);
+  }, [tmdbGet, omdbEnabled]);
 
   const closeDetail = useCallback(() => {
     setDetail(null); setDetailData(null); setDetailLoading(false);

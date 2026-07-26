@@ -28,6 +28,10 @@ export default {
       return handlePlex(url, env);
     }
 
+    if (url.pathname === "/api/omdb") {
+      return handleOmdb(url, env);
+    }
+
     // Everything else: serve static assets (index.html, etc.).
     return env.ASSETS.fetch(request);
   },
@@ -113,6 +117,52 @@ async function handlePlex(url, env) {
       "content-type": "application/json; charset=utf-8",
       // Personal data — keep it out of shared/edge caches, brief client cache.
       "cache-control": "private, max-age=60",
+    },
+  });
+}
+
+// Secure proxy to OMDb (omdbapi.com) for true IMDb ratings. The key lives in
+// env.OMDB_API_KEY as a Worker secret. With no `i`/`t`, acts as a config probe.
+async function handleOmdb(url, env) {
+  const key = env.OMDB_API_KEY;
+  if (!key) {
+    return json({ error: "not_configured" }, 503);
+  }
+
+  const i = url.searchParams.get("i"); // IMDb id, e.g. tt0111161
+  const t = url.searchParams.get("t"); // title fallback
+  if (!i && !t) {
+    // Probe used by the UI to decide whether to show IMDb ratings.
+    return json({ configured: true }, 200);
+  }
+  if (i && !/^tt\d+$/i.test(i)) {
+    return json({ error: "invalid_imdb_id" }, 400);
+  }
+
+  const omdb = new URL("https://www.omdbapi.com/");
+  if (i) {
+    omdb.searchParams.set("i", i);
+  } else {
+    omdb.searchParams.set("t", t);
+    const y = url.searchParams.get("y");
+    if (y) omdb.searchParams.set("y", y);
+  }
+  omdb.searchParams.set("apikey", key);
+
+  let upstream;
+  try {
+    upstream = await fetch(omdb.toString(), { headers: { accept: "application/json" } });
+  } catch (e) {
+    return json({ error: "omdb_unreachable", detail: String(e) }, 502);
+  }
+
+  const body = await upstream.text();
+  return new Response(body, {
+    status: upstream.status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      // IMDb ratings change slowly — cache a day at the edge.
+      "cache-control": "public, max-age=86400",
     },
   });
 }

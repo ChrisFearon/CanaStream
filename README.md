@@ -11,7 +11,8 @@ CanaStream queries [The Movie Database (TMDB)](https://www.themoviedb.org/) with
 - **Trending now** — TMDB's most-searched/most-popular titles this week, filtered to what's streamable in Canada on your selected services.
 - **Upcoming** — upcoming theatrical movie releases in Canada plus TV shows with a future first-air date, merged and sorted by soonest, each showing its release date.
 - **Cost filter** — show titles that are included with a subscription (free/included), available to rent or buy (paid), or both. Each provider is labelled Included / Free / Rent / Buy.
-- **Genre & score filters** — narrow the current results by genre and by minimum score (TMDB `vote_average`, 0–10). Both apply instantly to whatever is on screen, in any tab. (TMDB's API exposes its own rating, not IMDb's.)
+- **Genre & score filters** — narrow the current results by genre and by minimum score (TMDB `vote_average`, 0–10). Both apply instantly to whatever is on screen, in any tab.
+- **True IMDb ratings** — when an OMDb key is configured, opening a title's detail drawer shows its real **IMDb** rating (and vote count), linked to the IMDb page.
 - **Live provider data** — provider logos come straight from TMDB's Canadian availability data.
 - **Your Plex library** — when a Plex server is configured, any result you already own shows an **▶ Plex** badge, and a **My Plex** filter chip lets you narrow results to titles in your library.
 - **No build step** — one HTML file, opens in any modern browser.
@@ -97,6 +98,27 @@ browser. When both secrets are set, the page shows the **▶ Plex** badge and th
 > option is Plex's own `https://<id>.plex.direct:32400` domain (remote access
 > enabled), which ships a trusted cert; a Cloudflare Tunnel to your server also
 > works.
+
+### Adding true IMDb ratings (OMDb)
+
+The detail drawer can show a title's real IMDb rating via the free
+[OMDb API](https://www.omdbapi.com/). Get a key
+([omdbapi.com/apikey.aspx](https://www.omdbapi.com/apikey.aspx) — the free tier
+allows 1,000 lookups/day) and add it as a Worker secret:
+
+| Secret          | Value                       |
+|-----------------|-----------------------------|
+| `OMDB_API_KEY`  | Your OMDb API key           |
+
+```bash
+npx wrangler secret put OMDB_API_KEY
+```
+
+`worker.js` exposes a secure `/api/omdb` proxy (edge-cached for a day, since
+IMDb ratings change slowly). When the secret is set, opening a title fetches its
+`imdb_id` from TMDB, looks the rating up on OMDb, and shows an **IMDb** badge in
+the drawer. If the key is absent the app simply omits the badge — nothing else
+changes.
 
 ## License
 
