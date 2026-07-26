@@ -105,6 +105,29 @@
     background: #1f1300; color: #e5a00d; border: 1px solid #e5a00d;
   }
   .chip.plexchip.on { background: rgba(229,160,13,0.15); border-color: #e5a00d; }
+  /* Settings panel (gear) + searchable country combobox */
+  .settings { margin-bottom: 18px; }
+  .gear { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
+  .gear .caret { color: var(--muted); font-size: 11px; }
+  .settingsbody { margin-top: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+  .setrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .sethint { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
+  .combo { position: relative; min-width: 240px; }
+  .comboinput {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 10px 12px; font-size: 16px; outline: none;
+  }
+  .comboinput:focus { border-color: var(--accent); }
+  .combolist {
+    position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0;
+    max-height: 260px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.5);
+  }
+  .comboitem { display: flex; justify-content: space-between; gap: 10px; padding: 9px 12px; font-size: 14px; cursor: pointer; }
+  .comboitem:hover, .comboitem.sel { background: rgba(229,9,20,0.15); }
+  .comboitem .cc { color: var(--muted); font-size: 12px; align-self: center; }
+  .comboempty { padding: 10px 12px; color: var(--muted); font-size: 13px; }
   .costbar { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
   .costbar .lbl { font-size: 12px; color: var(--muted); }
   .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
@@ -189,6 +212,9 @@
     .tabs button { flex: 1 1 auto; }
     .seg { display: flex; width: 100%; }
     .seg button { flex: 1; padding: 10px 8px; }
+    /* Settings country combobox goes full-width on phones. */
+    .combo { min-width: 0; width: 100%; }
+    .setrow .lbl { width: 100%; }
     /* Larger touch targets on chips and the drawer close button. */
     .chip { padding: 9px 15px; font-size: 14px; }
     .drawer .close { width: 40px; height: 40px; font-size: 20px; }
@@ -225,6 +251,10 @@ function flag(cc) {
   if (!cc || cc.length !== 2) return "";
   return cc.toUpperCase().replace(/./g, c => String.fromCodePoint(127397 + c.charCodeAt(0)));
 }
+
+// Fallback country list for the picker, used until TMDB's full supported-region
+// list loads (or if that request fails). Names derive from the code.
+const FALLBACK_REGIONS = COUNTRIES.map(cc => ({ code: cc, name: countryName(cc) }));
 
 // Collapse a TMDB watch/providers `results` map into a sorted per-country list
 // for the drawer: each row is a country + its included-streaming provider names
@@ -504,6 +534,64 @@ function Detail({ item, data, loading, onClose, cname, countryCode }) {
   );
 }
 
+// Type-to-filter country selector. Filters by country name (substring) or ISO
+// code (prefix), covering every supplied region. Manages its own open/filter
+// state; calls onChange(code) when a country is chosen.
+function CountryPicker({ value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const boxRef = useRef(null);
+
+  const selected = options.find(o => o.code === value);
+  const label = selected ? `${flag(selected.code)} ${selected.name} (${selected.code})` : value;
+
+  const ql = q.trim().toLowerCase();
+  const filtered = !ql ? options : options.filter(o =>
+    o.name.toLowerCase().includes(ql) || o.code.toLowerCase().startsWith(ql));
+
+  // Close (and reset the filter) when clicking outside the widget.
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => {
+      if (boxRef.current && !boxRef.current.contains(e.target)) { setOpen(false); setQ(""); }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const choose = (code) => { onChange(code); setOpen(false); setQ(""); };
+
+  return (
+    <div className="combo" ref={boxRef}>
+      <input
+        className="comboinput" type="text"
+        value={open ? q : label}
+        placeholder="Type a country or code…"
+        onFocus={() => { setOpen(true); setQ(""); }}
+        onChange={e => { setQ(e.target.value); setOpen(true); }}
+        onKeyDown={e => {
+          if (e.key === "Enter" && filtered[0]) { e.preventDefault(); choose(filtered[0].code); e.currentTarget.blur(); }
+          else if (e.key === "Escape") { setOpen(false); setQ(""); e.currentTarget.blur(); }
+        }}
+      />
+      {open && (
+        <div className="combolist">
+          {filtered.length === 0 && <div className="comboempty">No matching country</div>}
+          {filtered.map(o => (
+            <div key={o.code}
+                 className={"comboitem" + (o.code === value ? " sel" : "")}
+                 onMouseDown={e => e.preventDefault()}
+                 onClick={() => choose(o.code)}>
+              <span>{flag(o.code)} {o.name}</span>
+              <span className="cc">{o.code}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [apiKey, setApiKey] = useApiKey();
   const [mode, setMode] = useState("search"); // "search" | "browse" | "trending"
@@ -525,6 +613,10 @@ function App() {
   const [country, setCountry] = useState(() => {
     try { return localStorage.getItem("cs_country") || REGION; } catch (e) { return REGION; }
   });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Full list of watch regions for the country picker (falls back to a curated
+  // set until TMDB's supported-region list loads).
+  const [regionList, setRegionList] = useState(FALLBACK_REGIONS);
   const [detail, setDetail] = useState(null);       // the item shown in the drawer
   const [detailData, setDetailData] = useState(null); // fetched TMDB details
   const [detailLoading, setDetailLoading] = useState(false);
@@ -583,6 +675,24 @@ function App() {
         .sort((a, b) => a.name.localeCompare(b.name));
       if (list.length) setGenres(list);
     });
+    return () => { alive = false; };
+  }, [tmdbGet]);
+
+  // Load TMDB's full list of supported watch regions for the country picker.
+  // Falls back silently to FALLBACK_REGIONS if the request fails.
+  useEffect(() => {
+    let alive = true;
+    tmdbGet(`/watch/providers/regions`, { language: "en-US" })
+      .then(r => r.json())
+      .then(d => {
+        if (!alive) return;
+        const list = (d && d.results || [])
+          .map(x => ({ code: x.iso_3166_1, name: x.english_name || x.iso_3166_1 }))
+          .filter(x => x.code)
+          .sort((a, b) => a.name.localeCompare(b.name));
+        if (list.length) setRegionList(list);
+      })
+      .catch(() => {});
     return () => { alive = false; };
   }, [tmdbGet]);
 
@@ -821,12 +931,23 @@ function App() {
         </div>
       )}
 
-      <div className="costbar">
-        <span className="lbl">Country</span>
-        <select className="sel" value={country} onChange={e => setCountry(e.target.value)}>
-          {COUNTRIES.map(cc => <option key={cc} value={cc}>{flag(cc) + " " + countryName(cc)}</option>)}
-        </select>
-        <span className="lbl" style={{ opacity: 0.7 }}>availability shown for {cname}</span>
+      <div className="settings">
+        <button className="gear" onClick={() => setSettingsOpen(o => !o)} aria-expanded={settingsOpen}>
+          ⚙ Settings · {flag(country)} {country}
+          <span className="caret">{settingsOpen ? "▾" : "▸"}</span>
+        </button>
+        {settingsOpen && (
+          <div className="settingsbody">
+            <div className="setrow">
+              <span className="lbl">Country</span>
+              <CountryPicker value={country} options={regionList} onChange={setCountry} />
+            </div>
+            <p className="sethint">
+              Availability is shown for {flag(country)} {cname}. Type a country name or 2-letter
+              code (e.g. “jp”, “united”) to filter — {regionList.length} regions available.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="costbar">

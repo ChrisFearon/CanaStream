@@ -6,7 +6,7 @@ CanaStream queries [The Movie Database (TMDB)](https://www.themoviedb.org/) with
 
 ## Features
 
-- **Country picker** — choose a country (Canada, US, UK, Australia, and more) to see availability there; the whole app — search, browse, trending, upcoming — follows your choice, which is remembered across visits.
+- **Settings panel** — a collapsible ⚙ Settings section holds a **searchable country picker**: type a country name or 2-letter ISO code (e.g. `jp`, `united`) to filter across every watch region TMDB supports. The whole app — search, browse, trending, upcoming — follows your choice, which is remembered across visits.
 - **Where in the world** — opening a title's detail drawer lists **every country** it streams in and on which services, with your selected country pinned to the top.
 - **Search a title** — find a specific movie or show and see which of your selected services carry it in the chosen country.
 - **Browse by service** — list popular titles currently available on the services you pick.

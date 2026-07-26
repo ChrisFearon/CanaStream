@@ -13,6 +13,7 @@ const ALLOWED_PREFIXES = [
   "/movie/",
   "/tv/",
   "/genre/",
+  "/watch/", // /watch/providers/regions — the list of supported watch regions
   "/configuration",
 ];
 
