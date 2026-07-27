@@ -207,16 +207,28 @@
   @media (max-width: 560px) {
     .wrap { padding: 20px 12px 44px; }
     header h1 { font-size: 27px; }
+    header p { font-size: 13px; margin-bottom: 18px; }
     .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-    /* Tabs and segmented cost control each split the row evenly. */
-    .tabs button { flex: 1 1 auto; }
+    /* Search: input fills the row, the button hugs its label beside it. */
+    .searchrow button { white-space: nowrap; padding: 12px 16px; }
+    /* Tabs form an even 2x2 grid instead of wrapping into ragged rows. */
+    .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .tabs button { width: 100%; padding: 11px 8px; }
+    /* Segmented cost control spans the row, buttons share it evenly. */
     .seg { display: flex; width: 100%; }
     .seg button { flex: 1; padding: 10px 8px; }
-    /* Settings country combobox goes full-width on phones. */
+    /* Cost / genre / score bars: label on its own line, controls fill width. */
+    .costbar { gap: 8px 10px; }
+    .costbar .lbl { width: 100%; }
+    .costbar .sel { flex: 1 1 40%; min-width: 0; }
+    /* Settings gear + country combobox go full-width and centred on phones. */
+    .settings, .gear { width: 100%; }
+    .gear { justify-content: center; padding: 12px; }
     .combo { min-width: 0; width: 100%; }
     .setrow .lbl { width: 100%; }
     /* Larger touch targets on chips and the drawer close button. */
-    .chip { padding: 9px 15px; font-size: 14px; }
+    .chip { padding: 10px 15px; font-size: 14px; }
+    .drawer { width: 100%; }
     .drawer .close { width: 40px; height: 40px; font-size: 20px; }
     .dbody { padding: 16px 16px 40px; }
     .dbody h2 { font-size: 20px; }
@@ -927,13 +939,6 @@ function App() {
         <p>Find where movies and TV shows are streaming — pick a country to see availability across Netflix, Disney+, Prime Video, Apple TV+ and more, plus your own Plex library.</p>
       </header>
 
-      <div className="tabs">
-        <button className={mode === "search" ? "active" : ""} onClick={() => setMode("search")}>Search a title</button>
-        <button className={mode === "browse" ? "active" : ""} onClick={() => setMode("browse")}>Browse by service</button>
-        <button className={mode === "trending" ? "active" : ""} onClick={() => setMode("trending")}>Trending now</button>
-        <button className={mode === "upcoming" ? "active" : ""} onClick={() => setMode("upcoming")}>Upcoming</button>
-      </div>
-
       {mode === "search" && (
         <div className="searchrow">
           <input type="text" value={query} placeholder="Type part of a title… e.g. schit, dune, the bear"
@@ -942,6 +947,13 @@ function App() {
           <button onClick={runSearch} disabled={loading}>Search</button>
         </div>
       )}
+
+      <div className="tabs">
+        <button className={mode === "search" ? "active" : ""} onClick={() => setMode("search")}>Search a title</button>
+        <button className={mode === "browse" ? "active" : ""} onClick={() => setMode("browse")}>Browse by service</button>
+        <button className={mode === "trending" ? "active" : ""} onClick={() => setMode("trending")}>Trending now</button>
+        <button className={mode === "upcoming" ? "active" : ""} onClick={() => setMode("upcoming")}>Upcoming</button>
+      </div>
 
       <div className="settings">
         <button className="gear" onClick={() => setSettingsOpen(o => !o)} aria-expanded={settingsOpen}>
